@@ -1,0 +1,10 @@
+# derleme ciktilari ve onbellek (imajlar GitHub'a yuklenmez, R2 kullanilir)
+build/
+output/
+cache/
+*.img
+*.img.xz
+*.sha
+__pycache__/
+*.pyc
+*.deb
