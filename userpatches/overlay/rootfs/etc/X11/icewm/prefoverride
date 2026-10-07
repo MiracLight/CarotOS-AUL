@@ -1,0 +1,4 @@
+# CarotOS-AUL IceWM tema geçersiz kılmaları (/etc/X11/icewm/prefoverride)
+# CrystalBlue teması duvar kağıdını desktop-base paketinden alır; bu paket imajda yok.
+# Bu dosya temanın DesktopBackgroundImage ayarını ezer.
+DesktopBackgroundImage="/usr/share/carotos-aul/wallpaper/carotos-aul-1920x1080.jpg"

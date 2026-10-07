@@ -1,0 +1,13 @@
+# CarotOS-AUL IceWM sistem tercihleri (/etc/X11/icewm/preferences)
+# Anahtar adları icewm 3.7.4-1 varsayılan preferences dosyasından doğrulandı.
+# Tema ayrı dosyada: /etc/X11/icewm/theme
+
+# Görev çubuğu: hafif tut
+TaskBarShowMailboxStatus=0
+TaskBarShowNetStatus=0
+TaskBarShowCPUStatus=1
+TaskBarShowClock=1
+TimeFormat="%H:%M"
+
+# Geçici arka plan rengi (wallpaper tasarlanana kadar siyah ekran görünmesin)
+DesktopBackgroundColor="rgb:1E/3A/5F"

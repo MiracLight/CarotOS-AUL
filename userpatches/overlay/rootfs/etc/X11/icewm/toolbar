@@ -1,0 +1,4 @@
+# CarotOS-AUL IceWM araç çubuğu (/etc/X11/icewm/toolbar)
+# Biçim: prog "Ad" simge komut   ("!" = simge yok)
+# CarotOS uygulamaları eklendikçe buraya satır eklenecek.
+prog "Terminal" ! /usr/bin/lxterminal
