@@ -1,17 +1,18 @@
 # CarotOS-AUL
 
-**CarotOS-AUL** (Armbian Ultra Light), CarotProject ailesinin ikinci isletim sistemidir.
-Armbian altyapisi uzerine kurulu, Debian 13 "trixie" tabanli, arm64 SBC'ler icin hafif bir
-siber guvenlik egitimi dagitimidir. Ilk hedef kart: **Orange Pi 5 (RK3588S, 8 GB)**.
+**CarotOS-AUL** (Armbian Ultra Light), CarotProject ailesinin ikinci işletim sistemidir.
+Armbian altyapısı üzerine kurulu, Debian 13 "trixie" tabanlı, arm64 SBC'ler için hafif bir
+siber güvenlik eğitimi dağıtımıdır. İlk hedef kart: **Orange Pi 5 (RK3588S, 8 GB)**.
 
-CarotDeck (cyberdeck donanimi) ayri ve daha sonraki bir projedir; AUL, o cihazla sinirli degildir.
+CarotDeck (cyberdeck donanımı) ayrı ve daha sonraki bir projedir; AUL bu cihazla sınırlı değildir.
 
 ## Durum
 
 | | |
 |---|---|
-| Derleme hatti | Calisiyor (7 Eki 2026, ilk derleme basarili, 41:38 dk) |
-| Onyukleme testi | **Yapilmadi** (kart henuz yok) |
-| Yayinlanmis imaj | **Yok.** Gercek donanimda onyuklenmeden imaj yayinlanmaz. |
+| Derleme hattı | Çalışıyor (ilk derleme 41:38 dk, önbellekli ikinci derleme 2:36 dk) |
+| Özelleştirme (`customize-image.sh` + overlay) | Doğrulandı: işaretçi ve overlay dosyası imajın içinde görüldü |
+| Önyükleme testi | **Yapılmadı** (kart henüz yok) |
+| Yayınlanmış imaj | **Yok.** Gerçek donanımda önyüklenmeden imaj yayınlanmaz. |
 
-Ayrintilar icin `BUILD.md` dosyasina bakin. Lisans henuz belirlenmedi.
+Ayrıntılar için `BUILD.md` dosyasına bakın. Lisans henüz belirlenmedi.

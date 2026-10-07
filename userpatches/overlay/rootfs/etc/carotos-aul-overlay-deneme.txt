@@ -1,0 +1,1 @@
+CarotOS-AUL overlay deneme dosyasi: bu dosya imajda gorunuyorsa overlay mekanizmasi calisiyor.
