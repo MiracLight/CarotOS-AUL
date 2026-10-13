@@ -1,0 +1,14 @@
+# CarotOS-AUL IceWM menusu.
+# 1) Terminal, 2) CarotOS alt menusu (tum CarotOS uygulamalari, her zaman gorunur),
+# 3) kurulu diger uygulamalar: icewm-menu-fdo ile .desktop dosyalarindan, menu acilinca uretilir (bosta RAM harcamaz).
+prog Terminal ! x-terminal-emulator -ls
+menu "CarotOS" /usr/share/icons/hicolor/48x48/apps/carotos-security-panel.png {
+	prog "Security Panel" /usr/share/icons/hicolor/48x48/apps/carotos-security-panel.png python3 /opt/carotos/security-panel/carotos-security-panel.py
+	prog "System Health" /usr/share/icons/hicolor/48x48/apps/carotos-health.png /opt/carotos/health/carotos-health.py
+	prog "USB Check" /usr/share/icons/hicolor/48x48/apps/carotos-usb-check.png /opt/carotos/usb/carotos-usb-check.py
+	prog "Store" /usr/share/icons/hicolor/48x48/apps/carotos-magaza.png /opt/carotos/magaza/carotos-magaza.py
+	separator
+	prog "Poligon (Student)" /usr/share/icons/hicolor/48x48/apps/carotos-poligon-ogrenci.png python3 /opt/carotos/poligon/ogrenci_uygulama.py
+	prog "Poligon (Teacher)" /usr/share/icons/hicolor/48x48/apps/carotos-poligon-ogretmen.png python3 /opt/carotos/poligon/ogretmen_uygulama.py
+}
+includeprog icewm-menu-fdo --seps -d1400 -D1650 -S --limit-max-len=42

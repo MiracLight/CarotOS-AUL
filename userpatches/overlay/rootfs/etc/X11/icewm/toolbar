@@ -2,3 +2,6 @@
 # Biçim: prog "Ad" simge komut   ("!" = simge yok)
 # CarotOS uygulamaları eklendikçe buraya satır eklenecek.
 prog "Terminal" ! /usr/bin/lxterminal
+prog "Security Panel" /usr/share/icons/hicolor/48x48/apps/carotos-security-panel.png python3 /opt/carotos/security-panel/carotos-security-panel.py
+prog "System Health" /usr/share/icons/hicolor/48x48/apps/carotos-health.png /opt/carotos/health/carotos-health.py
+prog "Store" /usr/share/icons/hicolor/48x48/apps/carotos-magaza.png /opt/carotos/magaza/carotos-magaza.py

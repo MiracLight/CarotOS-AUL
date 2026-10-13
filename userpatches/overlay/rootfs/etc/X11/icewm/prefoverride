@@ -2,3 +2,5 @@
 # CrystalBlue teması duvar kağıdını desktop-base paketinden alır; bu paket imajda yok.
 # Bu dosya temanın DesktopBackgroundImage ayarını ezer.
 DesktopBackgroundImage="/usr/share/carotos-aul/wallpaper/carotos-aul-1920x1080.jpg"
+# Duvar kagidi (1920x1080) her ekran cozunurlugune sigsin; kirpilip ortasi kayarak gorunmesin.
+DesktopBackgroundScaled=1

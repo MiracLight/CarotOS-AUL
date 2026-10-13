@@ -57,6 +57,12 @@ for f in $DOSYALAR; do
 	cp -a --no-preserve=ownership "$SRC/$f" "$HEDEF/$f"
 done
 
+# Imajda ikon temasi yok: tema ikonu yerine kendi ikonlarimiz (userpatches/overlay/.../hicolor/) kullanilir.
+sed -i 's/^Icon=utilities-system-monitor$/Icon=carotos-health/' "$HEDEF/usr/share/applications/carotos-health.desktop"
+sed -i 's/^Icon=drive-removable-media$/Icon=carotos-usb-check/' "$HEDEF/usr/share/applications/carotos-usb-check.desktop"
+grep -q '^Icon=carotos-health$' "$HEDEF/usr/share/applications/carotos-health.desktop" || { echo "HATA: health ikon satiri degistirilemedi"; exit 1; }
+grep -q '^Icon=carotos-usb-check$' "$HEDEF/usr/share/applications/carotos-usb-check.desktop" || { echo "HATA: usb ikon satiri degistirilemedi"; exit 1; }
+
 # kaynak kaydi (hangi surumden geldigi imajda gorunsun)
 install -d "$HEDEF/usr/share/carotos-aul"
 {
@@ -83,6 +89,15 @@ for d in "$HEDEF"/usr/share/applications/carotos-*.desktop; do
 	yol=$(echo "$e" | tr ' ' '\n' | grep '^/opt/' | head -1)
 	[ -f "$HEDEF$yol" ] || { echo "HATA: $(basename "$d") Exec hedefi yok: $yol"; hata=1; }
 	case "$e" in /opt/*) [ -x "$HEDEF$yol" ] || { echo "HATA: $(basename "$d") dogrudan calistirilir ama +x degil: $yol"; hata=1; } ;; esac
+done
+# her .desktop'un Icon= degeri overlay'de bir dosyaya karsilik geliyor mu
+for d in "$HEDEF"/usr/share/applications/carotos-*.desktop; do
+	ic=$(sed -n 's/^Icon=//p' "$d" | head -1)
+	if [ -f "$HEDEF/usr/share/icons/hicolor/256x256/apps/$ic.png" ] || [ -f "$HEDEF/usr/share/pixmaps/$ic.png" ]; then
+		:
+	else
+		echo "HATA: $(basename "$d") ikon dosyasi yok: $ic"; hata=1
+	fi
 done
 [ "$hata" -eq 0 ] || { echo "SENKRON BASARISIZ"; exit 1; }
 echo "tamam: $KAYNAK_TAG ($SHA)"
