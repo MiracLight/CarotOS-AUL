@@ -1,0 +1,4 @@
+kaynak: https://github.com/MiracLight/carotos.git
+tag: v1.2.1
+commit: 52b9293e22d1e130ef9a9f8006eede823cde4012
+uygulamalar: health security-panel usb magaza poligon
