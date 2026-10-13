@@ -1,0 +1,15 @@
+#!/bin/sh
+# CarotOS-AUL: pkexec sarmalayicisi.
+# Yetki ajanini (lxpolkit) bos masaustunde calistirmak ~27 MB RAM harcar. Bu betik ajani yalnizca
+# bir uygulama pkexec cagirdiginda baslatir, sonra GERCEK pkexec'i calistirir.
+# Yetki yukseltmez: tum yetkilendirme /usr/bin/pkexec ve polkit tarafindan, parola sorularak yapilir.
+if [ -n "$DISPLAY" ] && ! pgrep -u "$(id -u)" -x lxpolkit >/dev/null 2>&1; then
+	NO_AT_BRIDGE=1 GIO_USE_VFS=local setsid -f lxpolkit >/dev/null 2>&1
+	i=0
+	while ! pgrep -u "$(id -u)" -x lxpolkit >/dev/null 2>&1 && [ "$i" -lt 30 ]; do
+		sleep 0.1
+		i=$((i+1))
+	done
+	sleep 1
+fi
+exec /usr/bin/pkexec "$@"

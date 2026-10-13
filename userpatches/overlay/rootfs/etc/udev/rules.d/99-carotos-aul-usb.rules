@@ -1,0 +1,12 @@
+# CarotOS-AUL: USB depolama aygitlarini otomatik baglar (udisks2 yerine, ek RAM harcamadan).
+# Baglama noktasi: /run/media/system/<etiket>  (USB Denetimi bu oneki izler)
+# Her zaman nosuid,nodev,noexec ile baglanir. vfat/exfat icin dosyalar ilk kullanici (uid/gid 1000) adina gorunur.
+# Sistem diski USB uzerinde ise (Armbian etiketi armbi_*) dokunulmaz. NTFS bilincli olarak bu surumde yok.
+ACTION!="add", GOTO="carotos_usb_end"
+SUBSYSTEM!="block", GOTO="carotos_usb_end"
+ENV{ID_BUS}!="usb", GOTO="carotos_usb_end"
+ENV{ID_FS_USAGE}!="filesystem", GOTO="carotos_usb_end"
+ENV{ID_FS_LABEL}=="armbi_*", GOTO="carotos_usb_end"
+ENV{ID_FS_TYPE}=="vfat|exfat", RUN+="/usr/bin/systemd-mount --no-block --collect -o nosuid,nodev,noexec,uid=1000,gid=1000 $devnode", GOTO="carotos_usb_end"
+ENV{ID_FS_TYPE}=="ext2|ext3|ext4", RUN+="/usr/bin/systemd-mount --no-block --collect -o nosuid,nodev,noexec $devnode"
+LABEL="carotos_usb_end"

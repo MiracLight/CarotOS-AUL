@@ -1,0 +1,13 @@
+#!/bin/sh
+# CarotOS-AUL: IceWM oturum baslangic betigi (icewm-session calistirir).
+# Felsefe: bos masaustunde yalnizca gerekenler calisir, gerisi istek uzerine baslar.
+#  - dunst (bildirim): burada BASLATILMAZ; ilk bildirimde D-Bus kendiliginden baslatir.
+#  - lxpolkit (yetki ajani): burada BASLATILMAZ; /usr/local/bin/pkexec ilk ihtiyacta baslatir.
+#  - USB izleme: oturumla birlikte calisir.
+
+# Ekran bilgisini D-Bus/systemd kullanici yoneticisine ver (istek uzerine baslayan dunst DISPLAY'i bulsun).
+dbus-update-activation-environment --systemd DISPLAY XAUTHORITY >/dev/null 2>&1
+
+if [ -x /opt/carotos/usb/carotos-usb-check.py ]; then
+	/opt/carotos/usb/carotos-usb-check.py --monitor >/dev/null 2>&1 &
+fi
