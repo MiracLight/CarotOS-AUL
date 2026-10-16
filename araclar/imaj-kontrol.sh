@@ -41,6 +41,31 @@ else uyari "/boot/uInitrd bag yok"; fi
 bilgi "kernel dosyalari: $(ls "$M"/boot 2>/dev/null | grep -E '^(vmlinuz|Image|uInitrd|dtb)' | tr '\n' ' ')"
 for f in /boot/boot.cmd /boot/armbianEnv.txt; do var "$f"; done
 
+baslik "Kimlik (surum.json tek kaynak)"
+SJ="$M/usr/share/carotos-aul/surum.json"
+if [ -f "$SJ" ]; then
+	ok "imajda surum.json var"
+	eval "$(python3 -I - "$SJ" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+for k in ("ad", "surum", "url", "destek_url", "hata_url"):
+    print("J_%s='%s'" % (k.upper(), str(d.get(k, "")).replace("'", "")))
+PY
+)"
+	OSR="$M/etc/os-release"
+	if grep -qx "PRETTY_NAME=\"$J_AD $J_SURUM (trixie)\"" "$OSR" 2>/dev/null; then ok "os-release PRETTY_NAME = $J_AD $J_SURUM (trixie)"
+	else hata "os-release PRETTY_NAME beklenen degil: $(grep '^PRETTY_NAME=' "$OSR" 2>/dev/null)"; fi
+	grep -qx "CAROTOS_AUL_VERSION=\"$J_SURUM\"" "$OSR" 2>/dev/null && ok "os-release CAROTOS_AUL_VERSION" || hata "os-release CAROTOS_AUL_VERSION yok ya da yanlis"
+	grep -qx "HOME_URL=\"$J_URL\"" "$OSR" 2>/dev/null && ok "os-release HOME_URL" || hata "os-release HOME_URL beklenen degil: $(grep '^HOME_URL=' "$OSR" 2>/dev/null)"
+	grep -qx "SUPPORT_URL=\"$J_DESTEK_URL\"" "$OSR" 2>/dev/null && ok "os-release SUPPORT_URL" || hata "os-release SUPPORT_URL beklenen degil"
+	grep -qx "BUG_REPORT_URL=\"$J_HATA_URL\"" "$OSR" 2>/dev/null && ok "os-release BUG_REPORT_URL" || hata "os-release BUG_REPORT_URL beklenen degil"
+	grep -qi 'armbian' "$M/etc/issue" "$M/etc/issue.net" 2>/dev/null && hata "issue/issue.net icinde hala 'armbian' geciyor" || ok "issue/issue.net: armbian gecmiyor"
+	grep -q "^version=$J_SURUM\$" "$M/etc/carotos-aul-release" 2>/dev/null && ok "carotos-aul-release: version=$J_SURUM" || hata "carotos-aul-release: version satiri yok"
+	grep -q '^ID=debian$' "$OSR" 2>/dev/null && ok "ID=debian korunmus" || uyari "os-release ID=debian degil"
+else
+	hata "YOK: /usr/share/carotos-aul/surum.json"
+fi
+
 baslik "Paketler (dpkg durumu)"
 DQ() { dpkg-query --admindir="$M/var/lib/dpkg" "$@" 2>/dev/null; }
 for p in icewm xinit xserver-xorg-core xserver-xorg-input-libinput python3-gi gir1.2-gtk-3.0 \

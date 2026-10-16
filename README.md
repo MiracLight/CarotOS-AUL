@@ -1,6 +1,6 @@
 # CarotOS-AUL
 
-**CarotOS-AUL** (Armbian Ultra Light), CarotProject ailesinin ikinci işletim sistemidir.
+**CarotOS-AUL** (ARM Ultra Light), CarotProject ailesinin ikinci işletim sistemidir.
 Armbian altyapısı üzerine kurulu, Debian 13 "trixie" tabanlı, arm64 SBC'ler için hafif bir
 siber güvenlik eğitimi dağıtımıdır. İlk hedef kart: **Orange Pi 5 (RK3588S, 8 GB)**.
 

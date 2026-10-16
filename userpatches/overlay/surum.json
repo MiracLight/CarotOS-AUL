@@ -4,6 +4,9 @@
   "taban": "Debian 13 trixie arm64 (Armbian)",
   "ilk_hedef_kart": "orangepi5",
   "armbian_build_commit": "ab66461b00d31564680b5c9b2a1ce591326788df",
+  "url": "https://carotos.org",
+  "destek_url": "https://github.com/MiracLight/CarotOS-AUL/issues",
+  "hata_url": "https://github.com/MiracLight/CarotOS-AUL/issues",
   "onyukleme_dogrulandi": false,
   "ozellestirme_dogrulandi": true
 }

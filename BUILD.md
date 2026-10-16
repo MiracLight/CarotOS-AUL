@@ -11,7 +11,7 @@ cd /srv/aul && git clone --depth=1 --branch=main https://github.com/armbian/buil
 cd build && sudo ./compile.sh requirements
 sudo usermod -aG docker $USER   # sonra yeni oturum
 ```
-Kullanılan armbian/build commit'i: `surum.json` içinde.
+Kullanılan armbian/build commit'i: `userpatches/overlay/surum.json` içinde (sürüm, ad ve adresler de oradan okunur; imajda `/usr/share/carotos-aul/surum.json` olarak durur).
 
 ## Derleme (doğrulandı)
 `userpatches/` altındaki dosyalar `/srv/aul/build/userpatches/` altına kopyalanır

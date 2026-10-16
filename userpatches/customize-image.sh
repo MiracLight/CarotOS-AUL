@@ -59,6 +59,34 @@ Main() {
 		"$RELEASE" "$BOARD" "$LINUXFAMILY" "$ARCH" "$BUILD_DESKTOP" > /etc/carotos-aul-release
 	chmod 644 /etc/carotos-aul-release
 
+	# 1b) Kimlik: userpatches/overlay/surum.json TEK kaynaktir. Armbian'in base-files paketi /etc/os-release'i
+	# onbellekteki eski markayla birakabiliyor (2026-10-16'da yakalandi), bu yuzden kimlik burada yazilir
+	# ve dogrulanir. ID=debian ve NAME bilerek degistirilmez (araclar Debian bekler).
+	SURUM_JSON="${OVERLAY_KOK:-/tmp/overlay}/surum.json"
+	[ -f "$SURUM_JSON" ] || { echo "HATA: surum.json yok: $SURUM_JSON" >&2; exit 1; }
+	surum_oku() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8"))[sys.argv[2]])' "$SURUM_JSON" "$1"; }
+	K_AD=$(surum_oku ad); K_SURUM=$(surum_oku surum); K_URL=$(surum_oku url)
+	K_DESTEK=$(surum_oku destek_url); K_HATA=$(surum_oku hata_url)
+	for v in K_AD K_SURUM K_URL K_DESTEK K_HATA; do
+		[ -n "${!v}" ] || { echo "HATA: surum.json: $v bos" >&2; exit 1; }
+	done
+	K_PRETTY="$K_AD $K_SURUM ($RELEASE)"
+	OSR="${HEDEF:-}/etc/os-release"
+	sed -i -e "s|^PRETTY_NAME=.*|PRETTY_NAME=\"$K_PRETTY\"|" \
+		-e "s|^ARMBIAN_PRETTY_NAME=.*|ARMBIAN_PRETTY_NAME=\"$K_PRETTY\"|" \
+		-e "s|^HOME_URL=.*|HOME_URL=\"$K_URL\"|" \
+		-e "s|^SUPPORT_URL=.*|SUPPORT_URL=\"$K_DESTEK\"|" \
+		-e "s|^BUG_REPORT_URL=.*|BUG_REPORT_URL=\"$K_HATA\"|" \
+		-e "s|^CAROTOS_AUL_VERSION=.*|CAROTOS_AUL_VERSION=\"$K_SURUM\"|" "$OSR"
+	grep -q '^CAROTOS_AUL_VERSION=' "$OSR" || printf 'CAROTOS_AUL_VERSION="%s"\n' "$K_SURUM" >> "$OSR"
+	printf '%s %s \\l\n\n' "$K_AD" "$K_SURUM" > "${HEDEF:-}/etc/issue"
+	printf '%s %s\n' "$K_AD" "$K_SURUM" > "${HEDEF:-}/etc/issue.net"
+	printf 'version=%s\n' "$K_SURUM" >> "${HEDEF:-}/etc/carotos-aul-release"
+	install -D -m 644 "$SURUM_JSON" "${HEDEF:-}/usr/share/carotos-aul/surum.json"
+	grep -qx "PRETTY_NAME=\"$K_PRETTY\"" "$OSR" || { echo "HATA: os-release PRETTY_NAME yazilamadi" >&2; exit 1; }
+	grep -qx "CAROTOS_AUL_VERSION=\"$K_SURUM\"" "$OSR" || { echo "HATA: os-release CAROTOS_AUL_VERSION yazilamadi" >&2; exit 1; }
+	grep -qx "HOME_URL=\"$K_URL\"" "$OSR" || { echo "HATA: os-release HOME_URL yazilamadi" >&2; exit 1; }
+
 	# 2) overlay/rootfs altindaki her sey imajin kokune kopyalanir
 	if [ -d /tmp/overlay/rootfs ]; then
 		overlay_kur
