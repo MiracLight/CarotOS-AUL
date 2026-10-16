@@ -22,8 +22,12 @@ ONBELLEK = os.path.expanduser("~/.cache/carotos-aul")
 TABAN = "https://deb.debian.org/debian/dists/trixie"
 BILESENLER = ("main", "contrib", "non-free")
 # Katalog disinda, imajin ve uygulamalarin ihtiyac duydugu paketler.
-EKSTRA = ["nmap", "tcpdump", "tshark", "aircrack-ng", "nikto", "sqlmap",
+# nikto burada YOK: AUL'da apt'tan degil, overlay'den (/opt/nikto, 2.6.1) gelir;
+# onun icin istedigi Perl modulleri (libxml-writer-perl, libnet-ssleay-perl) listede.
+EKSTRA = ["nmap", "tcpdump", "tshark", "aircrack-ng", "sqlmap",
           "john", "hydra", "ufw", "fail2ban", "lxterminal", "pcmanfm",
+          "libxml-writer-perl", "libnet-ssleay-perl",
+          "pkexec", "polkitd", "libnotify-bin", "gir1.2-notify-0.7",
           "python3-gi", "gir1.2-gtk-3.0", "icewm", "dunst", "lxpolkit"]
 
 
