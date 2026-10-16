@@ -293,19 +293,49 @@
       "boyut": "~7 MB"
     },
     {
-      "paket": "nikto",
-      "ad": "Nikto",
+      "paket": "tshark",
+      "ad": "TShark",
       "kategori": "guvenlik",
-      "ikon": "applications-internet",
+      "ikon": "wireshark",
       "ozet": {
-        "tr": "Web sunucularındaki bilinen zafiyet ve yanlış yapılandırmaları tarayan güvenlik aracı.",
-        "en": "Security tool that scans web servers for known vulnerabilities and misconfigurations."
+        "tr": "Wireshark'ın komut satırı sürümü; ağ trafiğini yakalar ve protokol ayrıntısıyla çözümler.",
+        "en": "Command-line version of Wireshark; captures network traffic and dissects it with protocol detail."
       },
       "aciklama": {
-        "tr": "Web sunucularında bilinen zafiyet ve yanlış yapılandırmaları tarar.",
-        "en": "Scans web servers for known vulnerabilities and misconfigurations."
+        "tr": "Grafik arayüz olmadan paket yakalama ve çözümleme. Güvenlik Paneli ve Poligon görevleri bunu kullanır.",
+        "en": "Packet capture and dissection without a graphical interface. Used by the Security Panel and Poligon tasks."
       },
-      "boyut": "~2 MB"
+      "boyut": "~30 MB"
+    },
+    {
+      "paket": "ufw",
+      "ad": "UFW",
+      "kategori": "guvenlik",
+      "ikon": "security-high",
+      "ozet": {
+        "tr": "Basit komutlarla güvenlik duvarı (firewall) kurallarını yöneten araç.",
+        "en": "Tool that manages firewall rules with simple commands."
+      },
+      "aciklama": {
+        "tr": "Ağ bağlantılarına izin verme ve engelleme kurallarını kolayca yönetir. Güvenlik Paneli koruma ekranı bunu kullanır.",
+        "en": "Easily manages rules that allow or block network connections. Used by the Security Panel protection screen."
+      },
+      "boyut": "~3 MB"
+    },
+    {
+      "paket": "fail2ban",
+      "ad": "Fail2ban",
+      "kategori": "guvenlik",
+      "ikon": "security-medium",
+      "ozet": {
+        "tr": "Art arda başarısız giriş denemesi yapan adresleri algılayıp geçici olarak engelleyen koruma servisi.",
+        "en": "Protection service that detects addresses with repeated failed logins and blocks them temporarily."
+      },
+      "aciklama": {
+        "tr": "Kayıt dosyalarını izler ve saldırgan adresleri engeller. Arka planda servis olarak çalışır.",
+        "en": "Watches log files and blocks offending addresses. Runs in the background as a service."
+      },
+      "boyut": "~3 MB"
     },
     {
       "paket": "sqlmap",

@@ -64,6 +64,12 @@ Main() {
 		overlay_kur
 	fi
 
+	# 2b) Python bayt kodu onbellegi imaja girmez (userpatches VM'de calistirilinca olusabiliyor).
+	# Kalirsa build basarisiz olur.
+	find "${HEDEF:-}/opt" \( -name '__pycache__' -o -name '*.pyc' \) -prune -exec rm -rf {} + 2>/dev/null || true
+	n=$(find "${HEDEF:-}/opt" \( -name '__pycache__' -o -name '*.pyc' \) 2>/dev/null | wc -l)
+	[ "$n" = "0" ] || { echo "HATA: /opt altinda $n bayt kodu kalintisi kaldi" >&2; exit 1; }
+
 	# 3) Turkce locale (Karsilama Sihirbazi Turkce secimi icin). Varsayilan dil
 	# en_US kalir; tr_TR yalnizca kullanici secerse ~/.xsessionrc ile devreye girer.
 	# Uretilemezse build basarisiz olur (sessizce calismayan bir secenek olmasin).

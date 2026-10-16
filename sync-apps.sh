@@ -10,6 +10,9 @@ KAYNAK_TAG="v1.2.1"
 # Karsilama Sihirbazi (welcome) bilerek yok: AUL'a ozel (IceWM) surumu
 # userpatches/overlay/rootfs/opt/carotos/welcome/ altinda elle tutulur, senkronlanmaz.
 UYGULAMALAR="health security-panel usb magaza poligon"
+# AUL'a ozel, senkronda EZILMEYEN dosyalar (overlay/rootfs'e gore yol). Senkron oncesi saklanir, sonra geri konur.
+# Magaza katalogu: AUL'da nikto ve tshark/ufw/fail2ban farkli oldugu icin burada elle tutulur.
+KORUNAN="opt/carotos/magaza/katalog.json"
 # config/includes.chroot'a gore, uygulama disindaki dosyalar:
 DOSYALAR="
 usr/share/applications/carotos-health.desktop
@@ -38,6 +41,12 @@ SHA="$(git -C "$T/src" rev-parse HEAD)"
 SRC="$T/src/config/includes.chroot"
 [ -d "$SRC/opt/carotos" ] || { echo "HATA: kaynakta config/includes.chroot/opt/carotos yok"; exit 1; }
 
+# --- AUL'a ozel dosyalari sakla (uygulama klasorleri silinip yeniden kopyalanacak) ---
+for k in $KORUNAN; do
+	[ -f "$HEDEF/$k" ] || { echo "HATA: korunan dosya yok: $k"; exit 1; }
+	install -D -m 644 "$HEDEF/$k" "$T/korunan/$k"
+done
+
 # --- once hepsini dogrula, sonra kopyala ---
 for a in $UYGULAMALAR; do
 	[ -d "$SRC/opt/carotos/$a" ] || { echo "HATA: kaynakta uygulama yok: $a"; exit 1; }
@@ -57,6 +66,12 @@ for f in $DOSYALAR; do
 	install -d "$HEDEF/$(dirname "$f")"
 	cp -a --no-preserve=ownership "$SRC/$f" "$HEDEF/$f"
 done
+
+# AUL'a ozel dosyalari geri koy (upstream surumunun yerine)
+for k in $KORUNAN; do
+	install -D -m 644 "$T/korunan/$k" "$HEDEF/$k"
+done
+python3 -I -c 'import json,sys; json.load(open(sys.argv[1],encoding="utf-8"))' "$HEDEF/opt/carotos/magaza/katalog.json" || { echo "HATA: magaza katalog.json gecerli JSON degil"; exit 1; }
 
 # Imajda ikon temasi yok: tema ikonu yerine kendi ikonlarimiz (userpatches/overlay/.../hicolor/) kullanilir.
 sed -i 's/^Icon=utilities-system-monitor$/Icon=carotos-health/' "$HEDEF/usr/share/applications/carotos-health.desktop"
