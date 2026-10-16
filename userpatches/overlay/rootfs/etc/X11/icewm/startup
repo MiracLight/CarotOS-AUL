@@ -11,3 +11,9 @@ dbus-update-activation-environment --systemd DISPLAY XAUTHORITY >/dev/null 2>&1
 if [ -x /opt/carotos/usb/carotos-usb-check.py ]; then
 	/opt/carotos/usb/carotos-usb-check.py --monitor >/dev/null 2>&1 &
 fi
+
+# Karsilama Sihirbazi: ilk oturumlarda acilir; "Bitir" ya da "bir daha gosterme" ile kapanir.
+# Menuden (CarotOS > Welcome Wizard) her zaman elle acilabilir.
+if [ -x /opt/carotos/welcome/carotos-welcome.py ]; then
+	/opt/carotos/welcome/carotos-welcome.py --autostart >/dev/null 2>&1 &
+fi

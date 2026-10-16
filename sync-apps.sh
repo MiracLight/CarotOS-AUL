@@ -7,7 +7,8 @@ set -euo pipefail
 
 KAYNAK_DEPO="${SYNC_KAYNAK_DEPO:-https://github.com/MiracLight/carotos.git}"
 KAYNAK_TAG="v1.2.1"
-# Karsilama Sihirbazi (welcome) bilerek yok: XFCE kodu IceWM icin yeniden yazilacak.
+# Karsilama Sihirbazi (welcome) bilerek yok: AUL'a ozel (IceWM) surumu
+# userpatches/overlay/rootfs/opt/carotos/welcome/ altinda elle tutulur, senkronlanmaz.
 UYGULAMALAR="health security-panel usb magaza poligon"
 # config/includes.chroot'a gore, uygulama disindaki dosyalar:
 DOSYALAR="

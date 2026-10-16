@@ -10,5 +10,7 @@ menu "CarotOS" /usr/share/icons/hicolor/48x48/apps/carotos-security-panel.png {
 	separator
 	prog "Poligon (Student)" /usr/share/icons/hicolor/48x48/apps/carotos-poligon-ogrenci.png python3 /opt/carotos/poligon/ogrenci_uygulama.py
 	prog "Poligon (Teacher)" /usr/share/icons/hicolor/48x48/apps/carotos-poligon-ogretmen.png python3 /opt/carotos/poligon/ogretmen_uygulama.py
+	separator
+	prog "Welcome Wizard" /usr/share/icons/hicolor/48x48/apps/carotos-welcome.png python3 /opt/carotos/welcome/carotos-welcome.py
 }
 includeprog icewm-menu-fdo --seps -d1400 -D1650 -S --limit-max-len=42

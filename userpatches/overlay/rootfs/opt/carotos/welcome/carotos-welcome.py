@@ -1,0 +1,2220 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+CarotOS Karşılama Sihirbazı (AUL / IceWM sürümü)
+CarotOS v1.2.1 sihirbazından türetilmiştir; XFCE kodu IceWM ile değiştirilmiştir.
+İlk açılışta çalışır, CarotOS'u ve Linux'un temellerini tanıtır.
+
+Kullanım:
+    carotos-welcome              Normal açılış
+    carotos-welcome --autostart  Oturum açılışında (tercih kapalıysa sessizce çıkar)
+"""
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gdk, GdkPixbuf, GLib
+
+import configparser
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+APP_VERSION = "AUL"
+APP_CODENAME = "ARM Ultra Light"
+
+CONFIG_DIR = os.path.join(GLib.get_user_config_dir(), "carotos-welcome")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.json")
+
+IMG_DIR = os.environ.get("CAROTOS_IMG_DIR") or "/usr/share/carotos/welcome"
+
+# Logo icin sirayla denenecek yollar (ilk bulunan kullanilir).
+# NOT: Guvenlik Paneli ikonu yedek olarak KULLANILMAZ; aksi halde logo.png
+# yoksa karsilama ekraninda yanlis marka (kalkan) gozukuyordu. Her zaman
+# CarotOS logosu (logo.png) kullanilir.
+LOGO_CANDIDATES = [
+    os.path.join(IMG_DIR, "logo.png"),
+    "/usr/share/carotos/welcome/logo.png",
+    "/usr/share/carotos/logo.png",
+]
+
+
+# ---------------------------------------------------------------------------
+# Metinler
+# ---------------------------------------------------------------------------
+
+UI = {
+    "window_title": {"tr": "CarotOS'a Hoş Geldiniz", "en": "Welcome to CarotOS"},
+    "back": {"tr": "Geri", "en": "Back"},
+    "next": {"tr": "İleri", "en": "Next"},
+    "finish": {"tr": "Bitir", "en": "Finish"},
+    "dont_show": {
+        "tr": "Açılışta bir daha gösterme",
+        "en": "Don't show this at startup again",
+    },
+    "language": {"tr": "Dil", "en": "Language"},
+    "theme_light": {"tr": "Açık tema", "en": "Light theme"},
+    "theme_dark": {"tr": "Koyu tema", "en": "Dark theme"},
+    "image_missing": {
+        "tr": "(görsel bulunamadı)",
+        "en": "(image not found)",
+    },
+}
+
+
+# Sayfa icerigi veri olarak tutulur; boylece metin duzenlemek icin
+# arayuz koduna dokunmak gerekmez.
+#
+# Govde ogeleri:
+#   ("p",       {tr, en})                      paragraf
+#   ("bullets", [ {tr, en}, ... ])             madde listesi
+#   ("pairs",   [ (sol, {tr, en}), ... ])      iki sutunlu tablo
+#   ("code",    "metin")                       tek satirlik komut kutusu
+#   ("note",    {tr, en})                      vurgulu not kutusu
+
+PAGES = [
+    {
+        "id": "welcome",
+        "hero": True,
+        "title": {
+            "tr": f"CarotOS {APP_VERSION}",
+            "en": f"CarotOS {APP_VERSION}",
+        },
+        "subtitle": {
+            "tr": "Siber güvenlik eğitimi için ARM kartlarda çalışan hafif Linux",
+            "en": "A lightweight Linux for ARM boards, built for cybersecurity education",
+        },
+        "body": [
+            ("p", {
+                "tr": "Bu kısa tanıtım, sisteminizi tanımanıza yardımcı olur. "
+                      "Linux'u ilk kez kullanıyorsanız buradaki sayfalar "
+                      "başlamanız için yeterlidir.",
+                "en": "This short tour will help you get to know your system. "
+                      "If this is your first time using Linux, these pages are "
+                      "enough to get you started.",
+            }),
+            ("p", {
+                "tr": "İstediğiniz zaman Başlat menüsündeki CarotOS bölümünden "
+                      "tekrar açabilirsiniz.",
+                "en": "You can reopen it any time from the CarotOS section of "
+                      "the Start menu.",
+            }),
+        ],
+    },
+    {
+        "id": "appearance",
+        "custom": "appearance",
+        "title": {"tr": "Görünüm ve dil", "en": "Appearance and language"},
+        "subtitle": {
+            "tr": "Uygulamaların açık ya da koyu görünümünü ve dilini seçin",
+            "en": "Choose a light or dark look for applications, and the language",
+        },
+    },
+    {
+        "id": "windows",
+        "custom": "windows",
+        "title": {"tr": "Pencere teması", "en": "Window theme"},
+        "subtitle": {
+            "tr": "Pencere çerçevelerinin ve görev çubuğunun görünümünü seçin",
+            "en": "Choose how window frames and the taskbar look",
+        },
+    },
+    {
+        "id": "wallpaper",
+        "custom": "wallpaper",
+        "title": {"tr": "Masaüstü arka planı", "en": "Desktop wallpaper"},
+        "subtitle": {
+            "tr": "Bir resim ya da düz renk seçin",
+            "en": "Choose a picture or a solid colour",
+        },
+    },
+    {
+        "id": "linux",
+        "title": {"tr": "Linux ve dağıtımlar", "en": "Linux and distributions"},
+        "subtitle": {
+            "tr": "CarotOS nedir, neyin üzerine kurulu?",
+            "en": "What CarotOS is, and what it is built on",
+        },
+        "body": [
+            ("p", {
+                "tr": "Linux, işletim sisteminin çekirdeğidir. Tek başına kullanılmaz; "
+                      "üzerine masaüstü, uygulamalar ve araçlar eklenerek bir "
+                      "dağıtım (distro) hâline getirilir.",
+                "en": "Linux is the core of the operating system. It is not used on "
+                      "its own; a desktop, applications and tools are added on top "
+                      "of it to form a distribution (distro).",
+            }),
+            ("p", {
+                "tr": "CarotOS AUL (ARM Ultra Light), ARM kartlar için hazırlanmış "
+                      "hafif bir sürümdür ve Armbian üzerine kuruludur. Armbian de "
+                      "Debian 13 “Trixie” tabanlıdır; Ubuntu, Linux Mint ve Kali "
+                      "Linux da aynı temelden "
+                      "türeyen dağıtımlardır. Bu, Debian için yazılmış binlerce "
+                      "yazılımın burada da çalıştığı anlamına gelir.",
+                "en": "CarotOS AUL (ARM Ultra Light) is a lightweight edition for "
+                      "ARM boards, built on Armbian. Armbian is itself based on "
+                      "Debian 13 “Trixie”; Ubuntu, Linux Mint and Kali Linux are also "
+                      "derived from the same base. This means the thousands of "
+                      "programs written for Debian run here as well.",
+            }),
+            ("pairs", [
+                ("Debian 13", {"tr": "Temel sistem", "en": "Base system"}),
+                ("Armbian", {"tr": "ARM kartlar için sistem altyapısı",
+                             "en": "System foundation for ARM boards"}),
+                ("IceWM", {"tr": "Çok hafif masaüstü", "en": "Very light desktop"}),
+                ("APT", {"tr": "Yazılım yöneticisi", "en": "Software manager"}),
+            ]),
+        ],
+    },
+    {
+        "id": "desktop",
+        "title": {"tr": "Masaüstü", "en": "The desktop"},
+        "subtitle": {
+            "tr": "Tek görev çubuğu, az bellek",
+            "en": "One taskbar, little memory",
+        },
+        "body": [
+            ("bullets", [
+                {"tr": "Görev çubuğu ekranın altındadır. Başlat düğmesi, hızlı "
+                       "başlatma düğmeleri (Terminal, Güvenlik Paneli, Sistem "
+                       "Sağlığı, Mağaza), açık pencereler, işlemci göstergesi ve "
+                       "saat burada durur.",
+                 "en": "The taskbar is at the bottom of the screen. The Start "
+                       "button, quick-launch buttons (Terminal, Security Panel, "
+                       "System Health, Store), open windows, the CPU graph and "
+                       "the clock live there."},
+                {"tr": "Dört çalışma alanı vardır; görev çubuğundaki numaralı "
+                       "düğmelerle aralarında geçersiniz. Pencereleri dağıtarak "
+                       "ekranı düzenli tutabilirsiniz.",
+                 "en": "There are four workspaces; switch between them with the "
+                       "numbered buttons on the taskbar. Spreading windows across "
+                       "them keeps the screen tidy."},
+                {"tr": "Masaüstüne sağ tıklayarak da menüyü açabilirsiniz.",
+                 "en": "You can also right-click the desktop to open the menu."},
+            ]),
+            ("pairs", [
+                ("Ctrl+Esc", {"tr": "Başlat menüsünü açar.",
+                              "en": "Opens the Start menu."}),
+                ("Alt+Tab", {"tr": "Açık pencereler arasında geçiş yapar.",
+                             "en": "Switches between open windows."}),
+                ("Alt+F4", {"tr": "Etkin pencereyi kapatır.",
+                            "en": "Closes the active window."}),
+                ("Alt+F10", {"tr": "Etkin pencereyi büyütür.",
+                             "en": "Maximizes the active window."}),
+                ("Alt+Ctrl+← / →", {"tr": "Önceki / sonraki çalışma alanına geçer.",
+                                              "en": "Moves to the previous / next workspace."}),
+                ("Alt+Ctrl+T", {"tr": "Terminal açar.", "en": "Opens a terminal."}),
+            ]),
+        ],
+    },
+    {
+        "id": "files",
+        "title": {"tr": "Dosya sistemi", "en": "The file system"},
+        "subtitle": {
+            "tr": "Linux'ta sürücü harfi yoktur; her şey tek bir ağaçtadır",
+            "en": "Linux has no drive letters; everything lives in one tree",
+        },
+        "body": [
+            ("p", {
+                "tr": "Windows'taki C: ve D: sürücülerinin yerine Linux'ta tek bir "
+                      "kök dizin vardır: /  Diğer her şey onun altındadır.",
+                "en": "Instead of C: and D: drives, Linux has a single root "
+                      "directory: /  Everything else sits underneath it.",
+            }),
+            ("pairs", [
+                ("/home", {"tr": "Kullanıcı dosyaları. Sizin alanınız burasıdır.",
+                           "en": "User files. This is your space."}),
+                ("/etc", {"tr": "Sistem ayarları. Metin dosyalarından oluşur.",
+                          "en": "System settings, stored as plain text files."}),
+                ("/usr", {"tr": "Kurulu programlar ve paylaşılan dosyalar.",
+                          "en": "Installed programs and shared files."}),
+                ("/var", {"tr": "Değişen veriler: günlük kayıtları, önbellek.",
+                          "en": "Changing data: logs and caches."}),
+                ("/opt", {"tr": "Ek yazılımlar. CarotOS uygulamaları burada durur.",
+                          "en": "Extra software. The CarotOS applications live here."}),
+                ("/boot", {"tr": "Açılış dosyaları. Elle değiştirmeyin.",
+                           "en": "Boot files. Do not edit these by hand."}),
+                ("/run/media", {"tr": "Takılan USB bellekler burada bağlanır.",
+                                "en": "Inserted USB drives are mounted here."}),
+            ]),
+            ("note", {
+                "tr": "Bu hafif sürümde dosya yöneticisi hazır gelmez; dosyalara "
+                      "terminalden ls ve cd ile bakılır. İsterseniz "
+                      "“sudo apt install pcmanfm” ile bir dosya yöneticisi "
+                      "kurabilirsiniz.",
+                "en": "This light edition ships without a file manager; browse "
+                      "files from the terminal with ls and cd. If you like, "
+                      "install one with “sudo apt install pcmanfm”.",
+            }),
+        ],
+    },
+    {
+        "id": "home",
+        "title": {"tr": "Ev klasörünüz", "en": "Your home folder"},
+        "subtitle": {
+            "tr": "Kişisel dosyalarınızın bulunduğu yer",
+            "en": "Where your personal files live",
+        },
+        "body": [
+            ("p", {
+                "tr": "Ev klasörünüz /home altında, kullanıcı adınızla açılır. "
+                      "Dosyalarınız, ayarlarınız ve indirdikleriniz burada durur. "
+                      "Terminalde ~ işareti bu klasörü gösterir.",
+                "en": "Your home folder sits under /home, named after your user "
+                      "account. Your files, settings and downloads live here. In "
+                      "the terminal, the ~ sign stands for this folder.",
+            }),
+            ("p", {
+                "tr": "İçeriğini görmek için:",
+                "en": "To see what is inside:",
+            }),
+            ("code", "ls ~"),
+            ("note", {
+                "tr": "Adı nokta ile başlayan dosyalar gizlidir; ayar dosyalarıdır. "
+                      "Terminalde ls -a ile görünür hâle gelirler.",
+                "en": "Files whose names start with a dot are hidden; they hold "
+                      "settings. Use ls -a in the terminal to reveal them.",
+            }),
+        ],
+    },
+    {
+        "id": "software",
+        "title": {"tr": "Yazılım kurmak", "en": "Installing software"},
+        "subtitle": {
+            "tr": "Depolar: güvenli ve merkezî kurulum",
+            "en": "Repositories: safe, centralised installation",
+        },
+        "body": [
+            ("p", {
+                "tr": "Linux'ta yazılım internetten .exe indirilerek kurulmaz. "
+                      "Depolar adı verilen, imzalanmış ve denetlenmiş kaynaklardan "
+                      "gelir. Bu, kurduğunuz yazılımın değiştirilmediğini garanti eder.",
+                "en": "On Linux you do not install software by downloading .exe files. "
+                      "It comes from repositories: signed, reviewed sources. This "
+                      "guarantees that what you install has not been tampered with.",
+            }),
+            ("p", {
+                "tr": "Terminalden kurmak için:",
+                "en": "To install from the terminal:",
+            }),
+            ("code", "sudo apt update"),
+            ("code", "sudo apt install PAKET_ADI"),
+            ("note", {
+                "tr": "sudo, bir komutu yönetici yetkisiyle çalıştırır ve kendi "
+                      "parolanızı sorar. Yönetici işlemleri bu sistemde sudo "
+                      "üzerinden yapılır.",
+                "en": "sudo runs a command with administrator rights and asks for "
+                      "your own password. Administrative work on this system goes "
+                      "through sudo.",
+            }),
+        ],
+    },
+    {
+        "id": "magaza",
+        "title": {"tr": "CarotOS Mağaza", "en": "CarotOS Store"},
+        "subtitle": {
+            "tr": "Uygulamaları tek tıkla, terminale gerek kalmadan kurun",
+            "en": "Install applications with a single click, without the terminal",
+        },
+        "image": "magaza.png",
+        "body": [
+            ("p", {
+                "tr": "CarotOS Mağaza, seçilmiş uygulamaları apt üzerinden kuran "
+                      "grafik bir mağazadır. Kategorilere ayrılmış uygulamaları "
+                      "gezebilir, arama yapabilir ve her birini tek bir düğmeyle "
+                      "kurabilir ya da kaldırabilirsiniz.",
+                "en": "CarotOS Store is a graphical store that installs curated "
+                      "applications through apt. You can browse apps by category, "
+                      "search, and install or remove each one with a single button.",
+            }),
+            ("bullets", [
+                {"tr": "Grafik, Ofis, İnternet, Medya, Geliştirme, Sistem ve "
+                       "Güvenlik kategorileri bulunur.",
+                 "en": "Categories for Graphics, Office, Internet, Media, "
+                       "Development, System and Security."},
+                {"tr": "Kurulum ve kaldırma, yönetici parolası sorularak güvenli "
+                       "biçimde yapılır.",
+                 "en": "Installing and removing is done securely, prompting for "
+                       "the administrator password."},
+                {"tr": "Kurulu uygulamalar bir rozetle işaretlenir; depo listesi "
+                       "tek düğmeyle yenilenir.",
+                 "en": "Installed apps are marked with a badge; the repository "
+                       "list refreshes with a single button."},
+                {"tr": "Arayüz, sistemin diline ve temasına uyum sağlar.",
+                 "en": "The interface follows the system language and theme."},
+            ]),
+        ],
+    },
+    {
+        "id": "panel",
+        "title": {"tr": "CarotOS Güvenlik Paneli", "en": "CarotOS Security Panel"},
+        "subtitle": {
+            "tr": "Komut satırı bilmeden güvenlik araçlarını kullanın",
+            "en": "Use security tools without knowing the command line",
+        },
+        "image": "panel.png",
+        "body": [
+            ("p", {
+                "tr": "Güvenlik araçları güçlüdür ama komut satırı sözdizimi yeni "
+                      "başlayanlar için zordur. Panel, her aracı bir forma dönüştürür: "
+                      "alanları doldurursunuz, komut sizin için oluşturulur.",
+                "en": "Security tools are powerful, but their command-line syntax is "
+                      "hard for beginners. The panel turns each tool into a form: you "
+                      "fill in the fields and the command is built for you.",
+            }),
+            ("bullets", [
+                {"tr": "Her araç için ne işe yaradığı, ne zaman kullanıldığı ve "
+                       "örnek bir kullanım açıklanır.",
+                 "en": "Each tool explains what it does, when to use it, and shows "
+                       "an example."},
+                {"tr": "Çıktı canlı olarak akar; uzun taramalarda arayüz donmaz.",
+                 "en": "Output streams live; the interface stays responsive during "
+                       "long scans."},
+                {"tr": "Yetki gerektiren araçlar için “Root ile çalıştır” seçeneği "
+                       "vardır.",
+                 "en": "A “Run as root” option is available for tools that need "
+                       "elevated rights."},
+                {"tr": "Dil, tema ve güvenlik duvarı ayarları Ayarlar sekmesindedir.",
+                 "en": "Language, theme and firewall settings are in the Settings tab."},
+            ]),
+        ],
+    },
+    {
+        "id": "tools",
+        "title": {"tr": "Güvenlik araçları", "en": "Security tools"},
+        "subtitle": {
+            "tr": "On araç, hepsi panel üzerinden kullanılabilir",
+            "en": "Ten tools, all usable through the panel",
+        },
+        "body": [
+            ("note", {
+                "tr": "Bu hafif sürümde araçlar hazır gelmez. İhtiyacınız olanları "
+                      "Mağaza'nın Güvenlik kategorisinden ya da terminalden "
+                      "“sudo apt install” ile kurun; kurduktan sonra panelden "
+                      "kullanabilirsiniz.",
+                "en": "This light edition does not ship the tools preinstalled. "
+                      "Install the ones you need from the Store's Security "
+                      "category or from the terminal with “sudo apt install”; "
+                      "then use them through the panel.",
+            }),
+            ("grid", [
+                ("nmap", {"tr": "Ağdaki cihazları ve açık portları keşfeder.",
+                          "en": "Discovers devices and open ports on a network."}),
+                ("tcpdump", {"tr": "Ağ trafiğini komut satırından yakalar.",
+                             "en": "Captures network traffic from the command line."}),
+                ("tshark", {"tr": "Yakalanan trafiği çözümler ve okunur hâle getirir.",
+                            "en": "Analyses captured traffic and makes it readable."}),
+                ("aircrack-ng", {"tr": "Kablosuz ağ güvenliğini sınar.",
+                                 "en": "Tests wireless network security."}),
+                ("nikto", {"tr": "Web sunucularında bilinen zafiyetleri tarar.",
+                           "en": "Scans web servers for known weaknesses."}),
+                ("sqlmap", {"tr": "SQL enjeksiyonu açıklarını tespit eder.",
+                            "en": "Detects SQL injection vulnerabilities."}),
+                ("john", {"tr": "Parola karmalarının gücünü sınar.",
+                          "en": "Tests the strength of password hashes."}),
+                ("hydra", {"tr": "Oturum açma servislerinin dayanıklılığını ölçer.",
+                           "en": "Measures how well login services resist guessing."}),
+                ("ufw", {"tr": "Güvenlik duvarını yönetir.",
+                         "en": "Manages the firewall."}),
+                ("fail2ban", {"tr": "Tekrarlayan başarısız girişleri engeller.",
+                              "en": "Blocks repeated failed login attempts."}),
+            ]),
+            ("note", {
+                "tr": "Bu araçlar yalnızca kendi sisteminizde veya izin aldığınız "
+                      "sistemlerde kullanılmalıdır. İzinsiz tarama ve test yapmak "
+                      "birçok ülkede suçtur.",
+                "en": "These tools must only be used on your own systems or on "
+                      "systems you have permission to test. Unauthorised scanning "
+                      "is a criminal offence in many countries.",
+            }),
+        ],
+    },
+    {
+        "id": "usb",
+        "title": {"tr": "CarotOS USB Denetimi", "en": "CarotOS USB Check"},
+        "subtitle": {
+            "tr": "Takılan USB belleklerini otomatik güvenlik taraması",
+            "en": "Automatic security scan of inserted USB drives",
+        },
+        "image": "usb.png",
+        "body": [
+            ("p", {
+                "tr": "CarotOS USB Denetimi, bir USB bellek takıldığında arka "
+                      "planda çalışır ve belleği şüpheli dosyalara karşı tarar. "
+                      "Dosyaların içeriğini okumaz; yalnızca ad, uzantı ve biçim "
+                      "gibi ipuçlarına bakarak USB solucanı belirtilerini tespit "
+                      "eder.",
+                "en": "CarotOS USB Check runs in the background when a USB drive "
+                      "is inserted and scans it for suspicious files. It does not "
+                      "read file contents; it detects signs of USB worms using "
+                      "only clues such as names, extensions and format.",
+            }),
+            ("bullets", [
+                {"tr": "Otomatik çalıştırma dosyaları, çift uzantılar ve sahte "
+                       "kısayollar gibi bilinen bulaşma yöntemlerini yakalar.",
+                 "en": "Catches known infection methods such as autorun files, "
+                       "double extensions and fake shortcuts."},
+                {"tr": "Bulgular düşük, orta ve yüksek olarak derecelendirilir; "
+                       "her biri sade bir dille açıklanır.",
+                 "en": "Findings are rated low, medium and high, each explained "
+                       "in plain language."},
+                {"tr": "Tarama tamamen yereldir; hiçbir veri dışarı gönderilmez.",
+                 "en": "The scan is entirely local; no data is sent anywhere."},
+            ]),
+        ],
+    },
+    {
+        "id": "poligon",
+        "title": {"tr": "CarotOS Poligon", "en": "CarotOS Poligon"},
+        "subtitle": {
+            "tr": "Öğrendiğiniz araçları güvenli bir ortamda pratik edin",
+            "en": "Practice what you've learned in a safe environment",
+        },
+        "image": "poligon.png",
+        "body": [
+            ("p", {
+                "tr": "Poligon, izole bir ortamda gerçek görevlerle pratik yapmanızı "
+                      "sağlayan bir öğrenci ve öğretmen uygulaması çiftidir. Hiçbir "
+                      "görev internete ya da başka bir sisteme erişim gerektirmez; "
+                      "her şey kendi bilgisayarınızda kalır.",
+                "en": "Poligon is a student/teacher application pair for practicing "
+                      "with real tasks in an isolated environment. No task requires "
+                      "access to the internet or another system; everything stays "
+                      "on your own machine.",
+            }),
+            ("bullets", [
+                {"tr": "Bireysel pratik: öğretmene gerek yok, rastgele bir görevle "
+                       "hemen başlayıp kendi hızınızda ilerlersiniz.",
+                 "en": "Individual practice: no teacher needed, start with a "
+                       "random task right away and go at your own pace."},
+                {"tr": "Sınıf modu: öğretmenin verdiği oda kodu ve şifreyle "
+                       "katılırsınız, sınıfla birlikte ilerlersiniz.",
+                 "en": "Class mode: join with the room code and password your "
+                       "teacher gives you, and progress along with the class."},
+                {"tr": "hydra, nmap, john, sqlmap ve tshark ile saldırı; ufw ve "
+                       "fail2ban ile savunma görevleri bulunur. Görevlerde "
+                       "kullanılan araçları önce kurmanız gerekir.",
+                 "en": "Offense tasks with hydra, nmap, john, sqlmap and tshark; "
+                       "defense tasks with ufw and fail2ban. Install the tools "
+                       "the tasks use first."},
+            ]),
+        ],
+    },
+    {
+        "id": "terminal",
+        "title": {"tr": "Terminale ilk adım", "en": "First steps in the terminal"},
+        "subtitle": {
+            "tr": "Bilmeniz yeterli olan birkaç komut",
+            "en": "A handful of commands is enough to start",
+        },
+        "body": [
+            ("pairs", [
+                ("pwd", {"tr": "Hangi klasörde olduğunuzu yazar.",
+                         "en": "Prints the folder you are currently in."}),
+                ("ls", {"tr": "Bulunduğunuz klasörün içeriğini listeler.",
+                        "en": "Lists the contents of the current folder."}),
+                ("cd klasor", {"tr": "Başka bir klasöre geçer.",
+                               "en": "Moves into another folder."}),
+                ("cat dosya", {"tr": "Bir metin dosyasının içeriğini gösterir.",
+                               "en": "Shows the contents of a text file."}),
+                ("man komut", {"tr": "Bir komutun kılavuz sayfasını açar. Çıkmak için q.",
+                               "en": "Opens a command's manual page. Press q to exit."}),
+                ("ip a", {"tr": "Ağ arayüzlerinizi ve IP adresinizi gösterir.",
+                          "en": "Shows your network interfaces and IP address."}),
+            ]),
+            ("note", {
+                "tr": "Tab tuşu dosya ve komut adlarını tamamlar. Yazım hatalarını "
+                      "önlemenin en kolay yolu budur. Terminali görev çubuğundaki "
+                      "Terminal düğmesiyle ya da Alt+Ctrl+T ile açabilirsiniz.",
+                "en": "The Tab key completes file and command names. It is the "
+                      "easiest way to avoid typing mistakes. Open the terminal "
+                      "with the Terminal button on the taskbar or with Alt+Ctrl+T.",
+            }),
+        ],
+    },
+    {
+        "id": "resources",
+        "title": {"tr": "Daha fazlası", "en": "Going further"},
+        "subtitle": {
+            "tr": "Öğrenmeye devam etmek için kaynaklar",
+            "en": "Where to keep learning",
+        },
+        "body": [
+            ("links", [
+                ("carotos.org", "https://www.carotos.org/",
+                 {"tr": "Belgeler, indirmeler ve sürüm notları.",
+                  "en": "Documentation, downloads and release notes."}),
+                ("debian.org/doc", "https://www.debian.org/doc/",
+                 {"tr": "Debian kullanıcı el kitabı.",
+                  "en": "The Debian user handbook."}),
+                ("nmap.org/book", "https://nmap.org/book/",
+                 {"tr": "Ağ taramanın kaynak kitabı, ücretsiz okunabilir.",
+                  "en": "The reference book on network scanning, free to read."}),
+            ]),
+            ("p", {
+                "tr": "CarotOS açık kaynaklıdır. Hata bildirebilir, öneride "
+                      "bulunabilir veya katkı verebilirsiniz.",
+                "en": "CarotOS is open source. You are welcome to report bugs, "
+                      "suggest improvements or contribute.",
+            }),
+            ("note", {
+                "tr": "Bu tanıtımı istediğiniz zaman Başlat menüsündeki CarotOS "
+                      "bölümünden yeniden açabilirsiniz.",
+                "en": "You can reopen this tour at any time from the CarotOS "
+                      "section of the Start menu.",
+            }),
+        ],
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Ayarlar
+# ---------------------------------------------------------------------------
+
+DEFAULTS = {"lang": "tr", "theme": "dark", "show_on_startup": True,
+            "wallpaper": "", "wm_theme": ""}
+
+# Sihirbaz ust bandindaki secicilerin yaninda gosterilen aciklama
+PICK_TEXTS = {
+    "lang_heading": {"tr": "Sistem dili", "en": "System language"},
+    "theme_light": {"tr": "Açık Tema", "en": "Light Theme"},
+    "theme_dark": {"tr": "Koyu Tema", "en": "Dark Theme"},
+    "apply_note": {
+        "tr": "Seçimleriniz, sihirbazın sonundaki “Bitir” düğmesine "
+              "bastığınızda uygulanır. Dil değişikliği için oturumu kapatıp "
+              "yeniden açmanız gerekir.",
+        "en": "Your choices are applied when you press “Finish” at the end of "
+              "this tour. A language change takes effect after you log out and "
+              "back in.",
+    },
+    "wp_heading": {"tr": "Arka planlar", "en": "Wallpapers"},
+    "wp_none": {
+        "tr": "Henüz arka plan bulunamadı. Arka plan dosyaları sisteme "
+              "eklendiğinde burada görünür.",
+        "en": "No wallpapers found yet. They appear here once wallpaper files "
+              "are added to the system.",
+    },
+    "wp_note": {
+        "tr": "Seçtiğiniz arka plan, “Bitir” düğmesine bastığınızda masaüstüne "
+              "uygulanır.",
+        "en": "The wallpaper you pick is applied to the desktop when you press "
+              "“Finish”.",
+    },
+}
+
+SCOPE_NOTE = {
+    "tr": "Bu seçimler tüm CarotOS uygulamalarına ve masaüstüne uygulanır. "
+          "Sistem dili, oturumu kapatıp yeniden açtığınızda değişir.",
+    "en": "These choices apply to all CarotOS applications and the desktop. "
+          "The session language changes after you log out and back in.",
+}
+LANG_CHANGED_NOTE = {
+    "tr": "Dil değiştirildi. Masaüstünün tamamı için oturumu kapatıp açın.",
+    "en": "Language changed. Log out and back in to change the whole desktop.",
+}
+
+
+UI.update(PICK_TEXTS)
+
+AUL_TEXTS = {
+    "wm_none": {
+        "tr": "Kurulu pencere teması bulunamadı.",
+        "en": "No window themes are installed.",
+    },
+    "wm_note": {
+        "tr": "Seçtiğiniz tema, “Bitir” düğmesine bastığınızda uygulanır; "
+              "görev çubuğu ve pencere çerçeveleri bir an için yenilenir.",
+        "en": "The theme you pick is applied when you press “Finish”; the "
+              "taskbar and window frames refresh for a moment.",
+    },
+    "wp_colors_heading": {"tr": "Düz renkler", "en": "Solid colours"},
+    "wp_note": {
+        "tr": "Seçtiğiniz arka plan, “Bitir” düğmesine bastığınızda masaüstüne "
+              "uygulanır. Düz renkler, resimlere göre daha az bellek kullanır.",
+        "en": "The wallpaper you pick is applied to the desktop when you press "
+              "“Finish”. Solid colours use less memory than pictures.",
+    },
+    "link_nobrowser": {
+        "tr": "Bu sistemde web tarayıcısı kurulu değil. Adres panoya kopyalandı:",
+        "en": "No web browser is installed. The address was copied to the clipboard:",
+    },
+    "link_nobrowser2": {
+        "tr": "Mağaza'nın İnternet kategorisinden bir tarayıcı kurabilirsiniz.",
+        "en": "You can install a browser from the Store's Internet category.",
+    },
+}
+UI.update(AUL_TEXTS)
+
+
+def load_settings():
+    data = dict(DEFAULTS)
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            stored = json.load(fh)
+        if isinstance(stored, dict):
+            for key in DEFAULTS:
+                if key in stored:
+                    data[key] = stored[key]
+    except (OSError, ValueError):
+        pass
+    return data
+
+
+def save_settings(data):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Sistem geneli tercih uygulama
+#
+# Sihirbazdaki dil ve tema secimi yalnizca bu uygulamayi degil, masaustunu
+# ve diger CarotOS uygulamalarini da etkiler.
+# ---------------------------------------------------------------------------
+
+# Diger CarotOS uygulamalarinin ayar dosyalari. Sihirbazda yapilan secim
+# bunlara da yazilir; boylece dort uygulama ayni gorunumu paylasir ve
+# uygulamalarin kodunda degisiklik gerekmez.
+SIBLING_CONFIGS = [
+    ("carotos-panel", "settings.json"),
+    ("carotos-health", "settings.json"),
+    ("carotos-usb", "settings.json"),
+]
+
+LOCALE_FOR_LANG = {"tr": "tr_TR.UTF-8", "en": "en_US.UTF-8"}
+
+# --- IceWM (CarotOS AUL) ---------------------------------------------------
+# IceWM yapilandirma dizini: oturum ICEWM_PRIVCFG ile baslatildiysa o, degilse
+# ~/.config/icewm. IceWM ayni adli dosyalari BIRLESTIRMEZ; ilk bulunani okur
+# (ozel dizin -> /etc/X11/icewm -> /usr/share/icewm). Bu yuzden kullanici
+# dosyasi yazilirken sistem dosyasinin icerigi temel alinir.
+ICEWM_SYS_DIR = "/etc/X11/icewm"
+ICEWM_THEME_ROOT = "/usr/share/icewm/themes"
+ICEWM_DEFAULT_THEME = "CrystalBlue/default.theme"
+
+# (tema dosyasi, gorunen ad, aciklama). Yalnizca diskte GERCEKTEN bulunanlar
+# sihirbazda kart olarak gosterilir; boylece islevsiz secenek cikmaz.
+_IW_TEMA = {"tr": "IceWM teması", "en": "IceWM theme"}
+WM_THEMES = [
+    ("CrystalBlue/default.theme", "CrystalBlue",
+     {"tr": "CarotOS varsayılanı", "en": "CarotOS default"}),
+    ("default/default.theme", "IceWM",
+     {"tr": "IceWM'in kendi varsayılan teması", "en": "IceWM's own default theme"}),
+    ("NanoBlue/default.theme", "NanoBlue", _IW_TEMA),
+    ("Helix/default.theme", "Helix", _IW_TEMA),
+    ("icedesert/default.theme", "icedesert", _IW_TEMA),
+    ("metal2/default.theme", "metal2", _IW_TEMA),
+    ("Infadel2/default.theme", "Infadel2", _IW_TEMA),
+    ("motif/default.theme", "Motif",
+     {"tr": "Klasik Motif görünümü", "en": "Classic Motif look"}),
+    ("win95/default.theme", "Win95",
+     {"tr": "Windows 95 görünümü", "en": "Windows 95 look"}),
+]
+
+# Duvar kagitlari: CAROTOS_WP_DIR ile test/ozel dizin one alinabilir.
+WALLPAPER_DIRS = [
+    os.environ.get("CAROTOS_WP_DIR", ""),
+    "/usr/share/carotos-aul/wallpaper",
+]
+WALLPAPER_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+# Varsayilan secili gelecek dosya (ad on eki).
+DEFAULT_WALLPAPER = "carotos-aul"
+# Duz renk secenekleri (resimsiz arka plan; X sunucusunda resim belegi tutmaz).
+# Secim degeri "renk:RRGGBB" bicimindedir.
+WP_COLOR_PREFIX = "renk:"
+WP_COLORS = [
+    ("1E3A5F", {"tr": "CarotOS mavisi", "en": "CarotOS blue"}),
+    ("11161C", {"tr": "Gece", "en": "Night"}),
+    ("2B2F31", {"tr": "Grafit", "en": "Graphite"}),
+    ("0F4C5C", {"tr": "Petrol", "en": "Petrol"}),
+    ("1F4D3A", {"tr": "Orman", "en": "Forest"}),
+    ("4A2545", {"tr": "Erik", "en": "Plum"}),
+    ("6B1F2A", {"tr": "Bordo", "en": "Burgundy"}),
+    ("D5DADE", {"tr": "Açık gri", "en": "Light grey"}),
+    ("B9D8F0", {"tr": "Gökyüzü", "en": "Sky"}),
+]
+
+
+def wp_is_color(choice):
+    return isinstance(choice, str) and choice.startswith(WP_COLOR_PREFIX)
+
+
+def _rgb_pref(hexv):
+    return f"rgb:{hexv[0:2]}/{hexv[2:4]}/{hexv[4:6]}"
+
+
+def list_wallpapers():
+    """(ad, tam_yol) listesi dondurur; varsayilan olan basa alinir."""
+    bulunan = {}
+    for d in WALLPAPER_DIRS:
+        if d and os.path.isdir(d):
+            for ad in os.listdir(d):
+                if ad.lower().endswith(WALLPAPER_EXTS):
+                    bulunan.setdefault(ad, os.path.join(d, ad))
+            if bulunan:
+                break
+    ogeler = list(bulunan.items())
+    ogeler.sort(key=lambda kv: (
+        not kv[0].lower().startswith(DEFAULT_WALLPAPER), kv[0].lower()))
+    return ogeler
+
+
+def icewm_cfg_dir():
+    """Kullanici duzeyi IceWM ayar dizini (oturumun gercekten okudugu)."""
+    ozel = os.environ.get("ICEWM_PRIVCFG")
+    if ozel:
+        return ozel
+    return os.path.join(GLib.get_user_config_dir(), "icewm")
+
+
+def installed_wm_themes():
+    return [t for t in WM_THEMES
+            if os.path.isfile(os.path.join(ICEWM_THEME_ROOT, t[0]))]
+
+
+def read_theme_file():
+    """Gecerli IceWM temasini (klasor/dosya.theme) dondurur, yoksa None."""
+    for d in (icewm_cfg_dir(), ICEWM_SYS_DIR):
+        try:
+            with open(os.path.join(d, "theme"), "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        m = re.search(r'^\s*Theme\s*=\s*"([^"]+)"', text, re.M)
+        if m:
+            return m.group(1)
+    return None
+
+
+def set_pref_lines(text, values):
+    """IceWM tercih metninde 'Anahtar=Deger' satirlarini gunceller; yoksa
+    sona ekler. Yorum satirlarina ve baska anahtarlara dokunmaz."""
+    cikti = []
+    yapilan = set()
+    for ln in text.splitlines():
+        m = re.match(r"\s*([A-Za-z0-9_]+)\s*=", ln)
+        if m and m.group(1) in values:
+            anahtar = m.group(1)
+            if anahtar in yapilan:
+                continue
+            cikti.append(f"{anahtar}={values[anahtar]}")
+            yapilan.add(anahtar)
+        else:
+            cikti.append(ln)
+    for anahtar, deger in values.items():
+        if anahtar not in yapilan:
+            cikti.append(f"{anahtar}={deger}")
+    return "\n".join(cikti).rstrip("\n") + "\n"
+
+
+def _write_text(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def apply_icewm_theme(rel):
+    """Pencere temasini kullanici dosyasina yazar. Degisti ise True."""
+    if not rel or rel == read_theme_file():
+        return False
+    try:
+        _write_text(os.path.join(icewm_cfg_dir(), "theme"), f'Theme="{rel}"\n')
+    except OSError:
+        return False
+    return True
+
+
+def apply_icewm_wallpaper(choice):
+    """Duvar kagidini (yol ya da "renk:RRGGBB") kullanici prefoverride dosyasina
+    yazar. Degisti ise True."""
+    if not choice:
+        return False
+    hedef = os.path.join(icewm_cfg_dir(), "prefoverride")
+    kaynak = hedef if os.path.isfile(hedef) else os.path.join(
+        ICEWM_SYS_DIR, "prefoverride")
+    try:
+        with open(kaynak, "r", encoding="utf-8") as fh:
+            eski = fh.read()
+    except OSError:
+        eski = ""
+    if wp_is_color(choice):
+        hexv = choice[len(WP_COLOR_PREFIX):].upper()
+        if not re.fullmatch(r"[0-9A-F]{6}", hexv):
+            return False
+        degerler = {"DesktopBackgroundImage": '""',
+                    "DesktopBackgroundColor": f'"{_rgb_pref(hexv)}"'}
+    else:
+        if not os.path.isfile(choice):
+            return False
+        degerler = {"DesktopBackgroundImage": f'"{choice}"'}
+    degerler["DesktopBackgroundScaled"] = "1"
+    yeni = set_pref_lines(eski, degerler)
+    if yeni == eski:
+        return False
+    try:
+        _write_text(hedef, yeni)
+    except OSError:
+        return False
+    return True
+
+
+def apply_gtk_prefs(theme):
+    """Acik/koyu tercihini ~/.config/gtk-3.0/settings.ini dosyasina yazar.
+
+    IceWM altinda xsettings yoktur; GTK uygulamalari (Magaza, Poligon...)
+    karanlik/acik karari buradan okur."""
+    yol = os.path.join(GLib.get_user_config_dir(), "gtk-3.0", "settings.ini")
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str
+    try:
+        cp.read(yol, encoding="utf-8")
+    except (OSError, configparser.Error):
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.optionxform = str
+    if not cp.has_section("Settings"):
+        cp.add_section("Settings")
+    cp.set("Settings", "gtk-application-prefer-dark-theme",
+           "1" if theme == "dark" else "0")
+    try:
+        os.makedirs(os.path.dirname(yol), exist_ok=True)
+        with open(yol, "w", encoding="utf-8") as fh:
+            cp.write(fh, space_around_delimiters=False)
+        return True
+    except OSError:
+        return False
+
+
+def reload_icewm():
+    """IceWM'i yeniden baslatir (tema), sonra arka plani yeniler.
+    IceWM disinda (icesh yoksa) sessizce gecer."""
+    if not shutil.which("icesh"):
+        return False
+    try:
+        subprocess.run(["icesh", "restart"], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    time.sleep(1.5)
+    if shutil.which("icewmbg"):
+        try:
+            subprocess.run(["icewmbg", "-r"], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return True
+
+
+def find_browser():
+    """Kurulu bir web tarayicisi varsa yolunu dondurur (yoksa None).
+    x-www-browser bir 'alternatives' baglantisidir; tarayici yoksa kirik kalir."""
+    yol = shutil.which("x-www-browser")
+    if yol and os.path.exists(yol):
+        return yol
+    return None
+
+
+def open_url(url):
+    tarayici = find_browser()
+    if not tarayici:
+        return False
+    try:
+        subprocess.Popen([tarayici, url], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def read_current_wallpaper():
+    """Gecerli duvar kagidi: resim yolu, resimsizse "renk:RRGGBB", bilinmiyorsa ''."""
+    for d in (icewm_cfg_dir(), ICEWM_SYS_DIR):
+        try:
+            with open(os.path.join(d, "prefoverride"), "r",
+                      encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        m = re.search(r'^\s*DesktopBackgroundImage\s*=\s*"([^"]*)"', text, re.M)
+        if not m:
+            continue
+        if m.group(1):
+            return m.group(1)
+        c = re.search(r'^\s*DesktopBackgroundColor\s*=\s*"rgb:([0-9A-Fa-f]{2})/'
+                      r'([0-9A-Fa-f]{2})/([0-9A-Fa-f]{2})"', text, re.M)
+        if c:
+            return WP_COLOR_PREFIX + "".join(c.groups()).upper()
+        return ""
+    return ""
+
+
+def apply_sibling_settings(lang, theme):
+    """Diger CarotOS uygulamalarinin tercihlerini gunceller.
+
+    Var olan dosyanin diger alanlari korunur; yalnizca dil ve tema yazilir.
+    """
+    base = GLib.get_user_config_dir()
+    for folder, filename in SIBLING_CONFIGS:
+        path = os.path.join(base, folder, filename)
+        data = {}
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                data = loaded
+        except (OSError, ValueError):
+            pass
+        data["lang"] = lang
+        data["theme"] = theme
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        except OSError:
+            continue
+
+
+XSESSION_START = "# >>> CarotOS dil ayari >>>"
+XSESSION_END = "# <<< CarotOS dil ayari <<<"
+
+
+def _write_xsessionrc(locale):
+    """~/.xsessionrc icine dil degiskenlerini yazar.
+
+    Debian'da X oturumu /etc/X11/Xsession uzerinden baslar ve bu betik
+    ~/.xsessionrc dosyasini okur. LightDM'in ~/.dmrc dosyasini artik
+    okumadigi sistemlerde dili degistirmenin en guvenilir kullanici
+    duzeyi yoludur.
+    """
+    path = os.path.join(GLib.get_home_dir(), ".xsessionrc")
+    language = locale.split(".")[0]
+    block = "\n".join([
+        XSESSION_START,
+        f"export LANG={locale}",
+        f"export LANGUAGE={language}",
+        f"export LC_MESSAGES={locale}",
+        XSESSION_END,
+    ])
+
+    existing = ""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            existing = fh.read()
+    except OSError:
+        pass
+
+    if XSESSION_START in existing and XSESSION_END in existing:
+        before = existing.split(XSESSION_START)[0]
+        after = existing.split(XSESSION_END, 1)[1]
+        content = before + block + after
+    else:
+        content = (existing.rstrip("\n") + "\n\n" if existing.strip()
+                   else "") + block + "\n"
+
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(path, 0o644)
+        return True
+    except OSError:
+        return False
+
+
+def apply_session_language(lang):
+    """Oturum dilini kullanici duzeyinde ayarlar (~/.xsessionrc).
+
+    startx -> /etc/X11/xinit/xinitrc -> /etc/X11/Xsession bu dosyayi okur;
+    dil bir sonraki oturum acilisinda gecerli olur. Sistem geneli
+    /etc/default/locale DEGISTIRILMEZ: root ister ve makinedeki TUM
+    kullanicilari etkiler.
+    """
+    locale = LOCALE_FOR_LANG.get(lang)
+    if not locale:
+        return False
+    return _write_xsessionrc(locale)
+
+
+def find_logo():
+    for path in LOGO_CANDIDATES:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Pencere
+# ---------------------------------------------------------------------------
+
+class WelcomeWindow(Gtk.Window):
+
+    ACCENT = "#87979B"
+
+    def __init__(self, settings):
+        super().__init__(title=UI["window_title"][settings["lang"]])
+
+        self.settings = settings
+        self.lang = settings["lang"]
+        self.theme = settings["theme"]
+        self.wallpaper = (read_current_wallpaper()
+                          or settings.get("wallpaper", "") or "")
+        self.wp_cards = {}
+        self.wm_cards = {}
+        _kurulu = [t[0] for t in installed_wm_themes()]
+        _gecerli = read_theme_file()
+        _tercih = settings.get("wm_theme") or ""
+        self.wm_theme = (_gecerli if _gecerli in _kurulu
+                         else _tercih if _tercih in _kurulu
+                         else _kurulu[0] if _kurulu
+                         else ICEWM_DEFAULT_THEME)
+        self.index = 0
+
+        self.set_default_size(940, 660)
+        self.set_size_request(820, 580)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        logo = find_logo()
+        if logo:
+            try:
+                self.set_icon_from_file(logo)
+            except GLib.Error:
+                pass
+        self.connect("destroy", self.on_destroy)
+
+        self.css_provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            self.css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.add(root)
+
+        root.pack_start(self.build_header(), False, False, 0)
+        root.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL),
+                        False, False, 0)
+
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_transition_duration(180)
+        root.pack_start(self.stack, True, True, 0)
+
+        root.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL),
+                        False, False, 0)
+        root.pack_start(self.build_footer(), False, False, 0)
+
+        self.build_pages()
+        self.apply_theme()
+        self.refresh()
+
+    # -- ust bant ----------------------------------------------------------
+
+    def build_header(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        box.get_style_context().add_class("header")
+        box.set_border_width(14)
+
+        # Ust bantta logo yok: pencere kenarindaki simgeyle tekrar oluyordu.
+        wordmark = Gtk.Label(label="CarotOS", xalign=0.0)
+        wordmark.get_style_context().add_class("wordmark")
+        box.pack_start(wordmark, False, False, 0)
+
+        version = Gtk.Label(label=APP_CODENAME, xalign=0.0)
+        version.get_style_context().add_class("version-tag")
+        version.set_valign(Gtk.Align.CENTER)
+        box.pack_start(version, False, False, 0)
+
+        # Sag taraf: dil ve tema secicileri
+        self.lang_combo = Gtk.ComboBoxText()
+        self.lang_combo.append("tr", "Türkçe")
+        self.lang_combo.append("en", "English")
+        self.lang_combo.set_active_id(self.lang)
+        self.lang_combo.connect("changed", self.on_lang_changed)
+        box.pack_end(self.lang_combo, False, False, 0)
+
+        self.theme_btn = Gtk.Button()
+        self.theme_btn.connect("clicked", self.on_theme_toggled)
+        box.pack_end(self.theme_btn, False, False, 0)
+
+        return box
+
+    # -- alt bant ----------------------------------------------------------
+
+    def build_footer(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.set_border_width(14)
+
+        self.check = Gtk.CheckButton()
+        self.check.set_active(not self.settings["show_on_startup"])
+        self.check.connect("toggled", self.on_check_toggled)
+        box.pack_start(self.check, False, False, 0)
+
+
+        self.dots = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.dots.set_halign(Gtk.Align.CENTER)
+        self.dots.set_valign(Gtk.Align.CENTER)
+        for i in range(len(PAGES)):
+            dot = Gtk.Label(label="")
+            dot.get_style_context().add_class("dot")
+            self.dots.pack_start(dot, False, False, 0)
+        box.set_center_widget(self.dots)
+
+        self.next_btn = Gtk.Button()
+        self.next_btn.get_style_context().add_class("suggested-action")
+        self.next_btn.connect("clicked", self.on_next)
+        box.pack_end(self.next_btn, False, False, 0)
+
+        self.back_btn = Gtk.Button()
+        self.back_btn.connect("clicked", self.on_back)
+        box.pack_end(self.back_btn, False, False, 0)
+
+        return box
+
+    # -- sayfalar ----------------------------------------------------------
+
+    def build_pages(self):
+        for page in PAGES:
+            self.stack.add_named(self.build_page(page), page["id"])
+
+    def build_page(self, page):
+        if page.get("custom") == "appearance":
+            return self.build_appearance_page(page)
+        if page.get("custom") == "windows":
+            return self.build_windows_page(page)
+        if page.get("custom") == "wallpaper":
+            return self.build_wallpaper_page(page)
+        return self.build_standard_page(page)
+
+    # -- gorunum ve dil sayfasi --------------------------------------------
+
+    def build_appearance_page(self, page):
+        """Tema ve dil secimi. Secimler ANINDA sisteme uygulanmaz;
+        sihirbazin sonundaki 'Bitir' dugmesine basildiginda uygulanir."""
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
+
+        centerer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        centerer.set_halign(Gtk.Align.CENTER)
+        scroller.add(centerer)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.set_border_width(32)
+        outer.set_size_request(718, -1)
+        centerer.pack_start(outer, False, False, 0)
+
+        title = Gtk.Label(label=page["title"][self.lang])
+        title.get_style_context().add_class("page-title")
+        title.set_justify(Gtk.Justification.CENTER)
+        title.set_line_wrap(True)
+        outer.pack_start(title, False, False, 0)
+
+        rule = Gtk.Box()
+        rule.get_style_context().add_class("title-rule")
+        rule.set_size_request(54, 3)
+        rule.set_halign(Gtk.Align.CENTER)
+        rule.set_margin_top(11)
+        outer.pack_start(rule, False, False, 0)
+
+        subtitle = Gtk.Label(label=page["subtitle"][self.lang])
+        subtitle.get_style_context().add_class("page-subtitle")
+        subtitle.set_justify(Gtk.Justification.CENTER)
+        subtitle.set_line_wrap(True)
+        subtitle.set_margin_top(13)
+        outer.pack_start(subtitle, False, False, 0)
+
+        # --- tema kartlari ---
+        theme_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        theme_row.set_homogeneous(True)
+        theme_row.set_margin_top(30)
+        outer.pack_start(theme_row, False, False, 0)
+
+        self.theme_cards = {}
+        for key in ("light", "dark"):
+            card = self._theme_card(key)
+            self.theme_cards[key] = card
+            theme_row.pack_start(card["event"], True, True, 0)
+
+        # --- dil secimi ---
+        lang_title = Gtk.Label(label=UI["lang_heading"][self.lang], xalign=0.0)
+        lang_title.get_style_context().add_class("section-title")
+        lang_title.set_margin_top(34)
+        outer.pack_start(lang_title, False, False, 0)
+
+        lang_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        lang_row.set_homogeneous(True)
+        lang_row.set_margin_top(14)
+        outer.pack_start(lang_row, False, False, 0)
+
+        self.lang_cards = {}
+        for code, name, sub in (("tr", "Türkçe", "Turkish"),
+                                ("en", "English", "İngilizce")):
+            card = self._lang_card(code, name, sub)
+            self.lang_cards[code] = card
+            lang_row.pack_start(card["event"], True, True, 0)
+
+        # --- aciklama ---
+        note = Gtk.Label(label=UI["apply_note"][self.lang], xalign=0.0)
+        note.get_style_context().add_class("body-text")
+        note.set_line_wrap(True)
+        note.set_justify(Gtk.Justification.CENTER)
+        note.set_halign(Gtk.Align.CENTER)
+        inner = Gtk.Box()
+        inner.set_margin_top(14); inner.set_margin_bottom(14)
+        inner.set_margin_start(20); inner.set_margin_end(20)
+        inner.pack_start(note, True, True, 0)
+        note_box = Gtk.Box()
+        note_box.get_style_context().add_class("note")
+        note_box.set_margin_top(30)
+        note_box.pack_start(inner, True, True, 0)
+        outer.pack_start(note_box, False, False, 0)
+
+        self._sync_selection()
+        return scroller
+
+    def _theme_card(self, key):
+        """Kucuk bir pencere onizlemesi tasiyan secilebilir kart."""
+        dark = key == "dark"
+        event = Gtk.EventBox()
+        event.connect("button-press-event", self._on_theme_pick, key)
+        event.set_above_child(False)
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        frame.get_style_context().add_class("pick-card")
+        event.add(frame)
+
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        head.set_margin_top(14); head.set_margin_bottom(12)
+        name = Gtk.Label(label=UI["theme_dark" if dark else "theme_light"][self.lang])
+        name.get_style_context().add_class("pick-title")
+        head.pack_start(name, False, False, 0)
+        sub = Gtk.Label(label="Dark Theme" if dark else "Light Theme")
+        sub.get_style_context().add_class("pick-sub")
+        head.pack_start(sub, False, False, 0)
+        frame.pack_start(head, False, False, 0)
+
+        # Onizleme: sahte bir pencere
+        preview = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        preview.get_style_context().add_class(
+            "preview-dark" if dark else "preview-light")
+        preview.set_size_request(-1, 132)
+        preview.set_margin_start(16); preview.set_margin_end(16)
+        preview.set_margin_bottom(16)
+
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+        bar.get_style_context().add_class(
+            "preview-bar-dark" if dark else "preview-bar-light")
+        bar.set_size_request(-1, 22)
+        for _ in range(3):
+            dot = Gtk.Box()
+            dot.get_style_context().add_class("preview-dot")
+            dot.set_size_request(7, 7)
+            dot.set_valign(Gtk.Align.CENTER)
+            bar.pack_start(dot, False, False, 0)
+        bar.set_margin_bottom(10)
+        preview.pack_start(bar, False, False, 0)
+
+        for width in (150, 110, 132):
+            line = Gtk.Box()
+            line.get_style_context().add_class(
+                "preview-line-dark" if dark else "preview-line-light")
+            line.set_size_request(width, 8)
+            line.set_margin_start(12)
+            line.set_margin_bottom(9)
+            preview.pack_start(line, False, False, 0)
+
+        chip = Gtk.Box()
+        chip.get_style_context().add_class("preview-chip")
+        chip.set_size_request(64, 14)
+        chip.set_margin_start(12)
+        preview.pack_start(chip, False, False, 0)
+
+        frame.pack_start(preview, False, False, 0)
+        return {"event": event, "frame": frame}
+
+    def _lang_card(self, code, name, sub_text):
+        event = Gtk.EventBox()
+        event.connect("button-press-event", self._on_lang_pick, code)
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        frame.get_style_context().add_class("pick-card")
+        event.add(frame)
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        inner.set_margin_top(16); inner.set_margin_bottom(16)
+        label = Gtk.Label(label=name)
+        label.get_style_context().add_class("pick-title")
+        inner.pack_start(label, False, False, 0)
+        sub = Gtk.Label(label=sub_text)
+        sub.get_style_context().add_class("pick-sub")
+        inner.pack_start(sub, False, False, 0)
+        frame.pack_start(inner, True, True, 0)
+        return {"event": event, "frame": frame}
+
+    def _sync_selection(self):
+        """Secili karta cerceve verir."""
+        for key, card in getattr(self, "theme_cards", {}).items():
+            ctx = card["frame"].get_style_context()
+            if key == self.theme:
+                ctx.add_class("pick-selected")
+            else:
+                ctx.remove_class("pick-selected")
+        for code, card in getattr(self, "lang_cards", {}).items():
+            ctx = card["frame"].get_style_context()
+            if code == self.lang:
+                ctx.add_class("pick-selected")
+            else:
+                ctx.remove_class("pick-selected")
+
+    def _on_theme_pick(self, _widget, _event, key):
+        if key == self.theme:
+            return True
+        self.theme = key
+        self.settings["theme"] = key
+        save_settings(self.settings)
+        # Sihirbazin kendi gorunumu hemen degisir; sisteme uygulama
+        # "Bitir" dugmesinde yapilir.
+        self.apply_theme()
+        self.refresh()
+        return True
+
+    def _on_lang_pick(self, _widget, _event, code):
+        if code == self.lang:
+            return True
+        self.lang = code
+        self.settings["lang"] = code
+        save_settings(self.settings)
+        self.rebuild()
+        return True
+
+    # -- masaustu arka plani sayfasi ---------------------------------------
+
+    def build_wallpaper_page(self, page):
+        """Kurulu duvar kagitlarini kucuk onizlemelerle listeler. Secim
+        ANINDA uygulanmaz; sihirbazin sonundaki 'Bitir' dugmesinde uygulanir."""
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
+
+        centerer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        centerer.set_halign(Gtk.Align.CENTER)
+        scroller.add(centerer)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.set_border_width(32)
+        outer.set_size_request(718, -1)
+        centerer.pack_start(outer, False, False, 0)
+
+        title = Gtk.Label(label=page["title"][self.lang])
+        title.get_style_context().add_class("page-title")
+        title.set_justify(Gtk.Justification.CENTER)
+        title.set_line_wrap(True)
+        outer.pack_start(title, False, False, 0)
+
+        rule = Gtk.Box()
+        rule.get_style_context().add_class("title-rule")
+        rule.set_size_request(54, 3)
+        rule.set_halign(Gtk.Align.CENTER)
+        rule.set_margin_top(11)
+        outer.pack_start(rule, False, False, 0)
+
+        subtitle = Gtk.Label(label=page["subtitle"][self.lang])
+        subtitle.get_style_context().add_class("page-subtitle")
+        subtitle.set_justify(Gtk.Justification.CENTER)
+        subtitle.set_line_wrap(True)
+        subtitle.set_margin_top(13)
+        outer.pack_start(subtitle, False, False, 0)
+
+        wallpapers = list_wallpapers()
+
+        # Varsayilan secim: kayitli secim yoksa DEFAULT_WALLPAPER, o da yoksa
+        # listedeki ilk arka plan.
+        if not self.wallpaper or (not wp_is_color(self.wallpaper)
+                                  and not os.path.isfile(self.wallpaper)):
+            if wallpapers:
+                varsayilan = next(
+                    (p for ad, p in wallpapers
+                     if ad.lower().startswith(DEFAULT_WALLPAPER)),
+                    wallpapers[0][1])
+                self.wallpaper = varsayilan
+
+        self.wp_cards = {}
+
+        entries = list(wallpapers)
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(16)
+        grid.set_row_spacing(16)
+        grid.set_column_homogeneous(True)
+        grid.set_halign(Gtk.Align.CENTER)
+        grid.set_margin_top(26)
+        outer.pack_start(grid, False, False, 0)
+
+        for i, (ad, path) in enumerate(entries):
+            card = self._wallpaper_card(ad, path)
+            self.wp_cards[path] = card
+            grid.attach(card["event"], i % 3, i // 3, 1, 1)
+
+        renk_baslik = Gtk.Label(label=UI["wp_colors_heading"][self.lang], xalign=0.0)
+        renk_baslik.get_style_context().add_class("section-title")
+        renk_baslik.set_margin_top(32)
+        outer.pack_start(renk_baslik, False, False, 0)
+
+        cgrid = Gtk.Grid()
+        cgrid.set_column_spacing(16)
+        cgrid.set_row_spacing(14)
+        cgrid.set_column_homogeneous(True)
+        cgrid.set_halign(Gtk.Align.CENTER)
+        cgrid.set_margin_top(14)
+        outer.pack_start(cgrid, False, False, 0)
+        for i, (hexv, adlar) in enumerate(WP_COLORS):
+            secim = WP_COLOR_PREFIX + hexv
+            kart = self._wallpaper_card(adlar[self.lang], secim)
+            self.wp_cards[secim] = kart
+            cgrid.attach(kart["event"], i % 3, i // 3, 1, 1)
+
+        note = Gtk.Label(label=UI["wp_note"][self.lang], xalign=0.0)
+        note.get_style_context().add_class("body-text")
+        note.set_line_wrap(True)
+        note.set_justify(Gtk.Justification.CENTER)
+        note.set_halign(Gtk.Align.CENTER)
+        inner = Gtk.Box()
+        inner.set_margin_top(14); inner.set_margin_bottom(14)
+        inner.set_margin_start(20); inner.set_margin_end(20)
+        inner.pack_start(note, True, True, 0)
+        note_box = Gtk.Box()
+        note_box.get_style_context().add_class("note-box")
+        note_box.set_margin_top(28)
+        note_box.set_halign(Gtk.Align.CENTER)
+        note_box.set_size_request(self.CARD_WIDTH, -1)
+        note_box.pack_start(inner, True, True, 0)
+        outer.pack_start(note_box, False, False, 0)
+
+        self._sync_wallpaper_selection()
+        return scroller
+
+    def _wallpaper_card(self, name, path):
+        event = Gtk.EventBox()
+        event.connect("button-press-event", self._on_wallpaper_pick, path)
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        frame.get_style_context().add_class("pick-card")
+        # Ic bosluk: onizleme gorseli kartin yuvarlak kenarina yapismasin,
+        # kosesinden tasmasin.
+        frame.set_border_width(10)
+        event.add(frame)
+
+        img = None
+        if wp_is_color(path):
+            img = Gtk.Box()
+            img.set_size_request(188, 64)
+            img.get_style_context().add_class("wp-color")
+            prov = Gtk.CssProvider()
+            prov.load_from_data((".wp-color { background-color: #" + path[len(WP_COLOR_PREFIX):]
+                                 + "; border-radius: 5px; }").encode())
+            img.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        try:
+            if img is None:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 188, 106, False)
+                img = Gtk.Image.new_from_pixbuf(pb)
+        except GLib.Error:
+            img = Gtk.Image.new_from_icon_name("image-x-generic",
+                                               Gtk.IconSize.DIALOG)
+            img.set_pixel_size(88)
+        img.get_style_context().add_class("wp-thumb")
+        img.set_halign(Gtk.Align.CENTER)
+        img.set_valign(Gtk.Align.CENTER)
+        frame.pack_start(img, False, False, 0)
+
+        if wp_is_color(path):
+            etiket = Gtk.Label(label=name)
+            etiket.get_style_context().add_class("pick-sub")
+            etiket.set_margin_top(6)
+            frame.pack_start(etiket, False, False, 0)
+
+        return {"event": event, "frame": frame}
+
+    def _sync_wallpaper_selection(self):
+        for path, card in getattr(self, "wp_cards", {}).items():
+            ctx = card["frame"].get_style_context()
+            if path == self.wallpaper:
+                ctx.add_class("pick-selected")
+            else:
+                ctx.remove_class("pick-selected")
+
+    def _on_wallpaper_pick(self, _widget, _event, path):
+        if path == self.wallpaper:
+            return True
+        self.wallpaper = path
+        self.settings["wallpaper"] = path
+        save_settings(self.settings)
+        self._sync_wallpaper_selection()
+        return True
+
+    # -- pencere temasi sayfasi (IceWM) ------------------------------------
+
+    def build_windows_page(self, page):
+        """Kurulu IceWM temalarini kartlar olarak listeler. Secim ANINDA
+        uygulanmaz; sihirbazin sonundaki 'Bitir' dugmesinde uygulanir."""
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
+
+        centerer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        centerer.set_halign(Gtk.Align.CENTER)
+        scroller.add(centerer)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.set_border_width(32)
+        outer.set_size_request(718, -1)
+        centerer.pack_start(outer, False, False, 0)
+
+        title = Gtk.Label(label=page["title"][self.lang])
+        title.get_style_context().add_class("page-title")
+        title.set_justify(Gtk.Justification.CENTER)
+        title.set_line_wrap(True)
+        outer.pack_start(title, False, False, 0)
+
+        rule = Gtk.Box()
+        rule.get_style_context().add_class("title-rule")
+        rule.set_size_request(54, 3)
+        rule.set_halign(Gtk.Align.CENTER)
+        rule.set_margin_top(11)
+        outer.pack_start(rule, False, False, 0)
+
+        subtitle = Gtk.Label(label=page["subtitle"][self.lang])
+        subtitle.get_style_context().add_class("page-subtitle")
+        subtitle.set_justify(Gtk.Justification.CENTER)
+        subtitle.set_line_wrap(True)
+        subtitle.set_margin_top(13)
+        outer.pack_start(subtitle, False, False, 0)
+
+        self.wm_cards = {}
+        temalar = installed_wm_themes()
+
+        if not temalar:
+            bos = Gtk.Label(label=UI["wm_none"][self.lang])
+            bos.get_style_context().add_class("page-subtitle")
+            bos.set_line_wrap(True)
+            bos.set_justify(Gtk.Justification.CENTER)
+            bos.set_margin_top(40)
+            outer.pack_start(bos, False, False, 0)
+            return scroller
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(16)
+        grid.set_row_spacing(16)
+        grid.set_column_homogeneous(True)
+        grid.set_halign(Gtk.Align.CENTER)
+        grid.set_margin_top(26)
+        outer.pack_start(grid, False, False, 0)
+
+        for i, (rel, ad, aciklama) in enumerate(temalar):
+            card = self._wm_card(rel, ad, aciklama[self.lang])
+            self.wm_cards[rel] = card
+            grid.attach(card["event"], i % 3, i // 3, 1, 1)
+
+        note = Gtk.Label(label=UI["wm_note"][self.lang], xalign=0.0)
+        note.get_style_context().add_class("body-text")
+        note.set_line_wrap(True)
+        note.set_justify(Gtk.Justification.CENTER)
+        note.set_halign(Gtk.Align.CENTER)
+        inner = Gtk.Box()
+        inner.set_margin_top(14); inner.set_margin_bottom(14)
+        inner.set_margin_start(20); inner.set_margin_end(20)
+        inner.pack_start(note, True, True, 0)
+        note_box = Gtk.Box()
+        note_box.get_style_context().add_class("note-box")
+        note_box.set_margin_top(28)
+        note_box.set_halign(Gtk.Align.CENTER)
+        note_box.set_size_request(self.CARD_WIDTH, -1)
+        note_box.pack_start(inner, True, True, 0)
+        outer.pack_start(note_box, False, False, 0)
+
+        self._sync_wm_selection()
+        return scroller
+
+    def _wm_card(self, rel, name, sub_text):
+        event = Gtk.EventBox()
+        event.connect("button-press-event", self._on_wm_pick, rel)
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        frame.get_style_context().add_class("pick-card")
+        event.add(frame)
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        inner.set_margin_top(18); inner.set_margin_bottom(18)
+        inner.set_margin_start(8); inner.set_margin_end(8)
+        label = Gtk.Label(label=name)
+        label.get_style_context().add_class("pick-title")
+        inner.pack_start(label, False, False, 0)
+        sub = Gtk.Label(label=sub_text)
+        sub.set_line_wrap(True)
+        sub.set_justify(Gtk.Justification.CENTER)
+        sub.get_style_context().add_class("pick-sub")
+        inner.pack_start(sub, False, False, 0)
+        frame.pack_start(inner, True, True, 0)
+        return {"event": event, "frame": frame}
+
+    def _sync_wm_selection(self):
+        for rel, card in getattr(self, "wm_cards", {}).items():
+            ctx = card["frame"].get_style_context()
+            if rel == self.wm_theme:
+                ctx.add_class("pick-selected")
+            else:
+                ctx.remove_class("pick-selected")
+
+    def _on_wm_pick(self, _widget, _event, rel):
+        if rel == self.wm_theme:
+            return True
+        self.wm_theme = rel
+        self.settings["wm_theme"] = rel
+        save_settings(self.settings)
+        self._sync_wm_selection()
+        return True
+
+    def _on_link(self, _label, uri):
+        """Baglantiyi tarayicida acar; tarayici yoksa adresi panoya kopyalar
+        ve bunu kullaniciya soyler (sessizce hicbir sey yapmayan baglanti
+        birakilmaz)."""
+        if open_url(uri):
+            return True
+        try:
+            Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(uri, -1)
+        except Exception:
+            pass
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=UI["link_nobrowser"][self.lang])
+        dialog.format_secondary_text(uri + "\n\n" + UI["link_nobrowser2"][self.lang])
+        dialog.run()
+        dialog.destroy()
+        return True
+
+    def build_standard_page(self, page):
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_shadow_type(Gtk.ShadowType.NONE)
+
+        # Icerik sabit genislikte ortalanir; genis ekranda satirlar
+        # okunamayacak kadar uzamaz.
+        centerer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        centerer.set_halign(Gtk.Align.CENTER)
+        scroller.add(centerer)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.set_border_width(32)
+        outer.set_size_request(718, -1)
+        if page.get("hero"):
+            outer.set_valign(Gtk.Align.CENTER)
+        centerer.pack_start(outer, False, False, 0)
+
+        # --- baslik blogu (her sayfada ortali) ---
+        if page.get("hero"):
+            logo = find_logo()
+            if logo:
+                try:
+                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(logo, 104, 104, True)
+                    img = Gtk.Image.new_from_pixbuf(pb)
+                    img.set_halign(Gtk.Align.CENTER)
+                    outer.pack_start(img, False, False, 10)
+                except GLib.Error:
+                    pass
+
+        title = Gtk.Label(label=page["title"][self.lang])
+        title.get_style_context().add_class("page-title")
+        title.set_justify(Gtk.Justification.CENTER)
+        title.set_line_wrap(True)
+        title.set_halign(Gtk.Align.CENTER)
+        outer.pack_start(title, False, False, 0)
+
+        rule = Gtk.Box()
+        rule.get_style_context().add_class("title-rule")
+        rule.set_size_request(46, 3)
+        rule.set_halign(Gtk.Align.CENTER)
+        outer.pack_start(rule, False, False, 12)
+
+        subtitle = Gtk.Label(label=page["subtitle"][self.lang])
+        subtitle.get_style_context().add_class("page-subtitle")
+        subtitle.set_justify(Gtk.Justification.CENTER)
+        subtitle.set_line_wrap(True)
+        subtitle.set_max_width_chars(64)
+        subtitle.set_halign(Gtk.Align.CENTER)
+        outer.pack_start(subtitle, False, False, 0)
+
+        # --- govde ---
+        # Metin kartlari, baslik hizasindan biraz iceride dursun diye govdeye
+        # yan bosluk verilir (adalarin sag/sol gap'i).
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        body.set_margin_top(24)
+        outer.pack_start(body, False, False, 0)
+
+        if page.get("image"):
+            body.pack_start(self.build_image(page["image"]), False, False, 0)
+
+        for kind, payload in page["body"]:
+            widget = self.build_block(kind, payload)
+            if widget is not None:
+                body.pack_start(widget, False, False, 0)
+
+        return scroller
+
+    # Metin kartlarinin sabit genisligi. Sutundan dar olmasi, kartlarin iki
+    # yaninda belirgin bir bosluk (ada gap'i) birakir.
+    CARD_WIDTH = 600
+
+    @classmethod
+    def card(cls, child, style="card"):
+        """Icerigi hafif acik zeminli, sabit genislikte ortalanmis bir kutuya
+        yerlestirir (iki yaninda bosluk kalir)."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.get_style_context().add_class(style)
+        box.set_border_width(20)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_size_request(cls.CARD_WIDTH, -1)
+        box.pack_start(child, True, True, 0)
+        return box
+
+    def build_image(self, filename):
+        path = os.path.join(IMG_DIR, filename)
+        frame = Gtk.Frame()
+        frame.get_style_context().add_class("shot-frame")
+        frame.set_halign(Gtk.Align.CENTER)
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 678, 440, True)
+            frame.add(Gtk.Image.new_from_pixbuf(pb))
+        except GLib.Error:
+            placeholder = Gtk.Label(label=UI["image_missing"][self.lang])
+            placeholder.get_style_context().add_class("page-subtitle")
+            placeholder.set_size_request(678, 175)
+            frame.add(placeholder)
+        return frame
+
+    def build_block(self, kind, payload):
+        if kind == "p":
+            label = Gtk.Label(label=payload[self.lang], xalign=0.0)
+            label.set_line_wrap(True)
+            label.set_max_width_chars(58)
+            label.get_style_context().add_class("body-text")
+            return self.card(label)
+
+        if kind == "note":
+            inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            mark = Gtk.Label(label="!", xalign=0.5)
+            mark.get_style_context().add_class("note-mark")
+            mark.set_valign(Gtk.Align.START)
+            inner.pack_start(mark, False, False, 0)
+            label = Gtk.Label(label=payload[self.lang], xalign=0.0)
+            label.set_line_wrap(True)
+            label.set_max_width_chars(54)
+            label.get_style_context().add_class("note-text")
+            inner.pack_start(label, True, True, 0)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.get_style_context().add_class("note-box")
+            box.set_border_width(16)
+            box.set_halign(Gtk.Align.CENTER)
+            box.set_size_request(self.CARD_WIDTH, -1)
+            box.pack_start(inner, True, True, 0)
+            return box
+
+        if kind == "code":
+            label = Gtk.Label(label=payload, xalign=0.0)
+            label.set_selectable(True)
+            label.get_style_context().add_class("code-text")
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            box.get_style_context().add_class("code-box")
+            box.set_border_width(11)
+            box.set_halign(Gtk.Align.CENTER)
+            box.set_size_request(self.CARD_WIDTH, -1)
+            box.pack_start(label, True, True, 0)
+            return box
+
+        if kind == "bullets":
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=11)
+            for item in payload:
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=11)
+                marker = Gtk.Label(label="\u25b8", xalign=0.5)
+                marker.get_style_context().add_class("bullet-marker")
+                marker.set_valign(Gtk.Align.START)
+                row.pack_start(marker, False, False, 0)
+                text = Gtk.Label(label=item[self.lang], xalign=0.0)
+                text.set_line_wrap(True)
+                text.set_max_width_chars(54)
+                text.get_style_context().add_class("body-text")
+                row.pack_start(text, True, True, 0)
+                inner.pack_start(row, False, False, 0)
+            return self.card(inner)
+
+        if kind == "pairs":
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            for row_index, (key, value) in enumerate(payload):
+                if row_index:
+                    sep = Gtk.Box()
+                    sep.get_style_context().add_class("row-sep")
+                    sep.set_size_request(-1, 1)
+                    inner.pack_start(sep, False, False, 10)
+
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+                key_label = Gtk.Label(label=key, xalign=0.0)
+                key_label.get_style_context().add_class("pair-key")
+                key_label.set_valign(Gtk.Align.START)
+                key_label.set_size_request(132, -1)
+                row.pack_start(key_label, False, False, 0)
+
+                value_label = Gtk.Label(label=value[self.lang], xalign=0.0)
+                value_label.set_line_wrap(True)
+                value_label.set_max_width_chars(46)
+                value_label.get_style_context().add_class("body-text")
+                row.pack_start(value_label, True, True, 0)
+                inner.pack_start(row, False, False, 0)
+            return self.card(inner)
+
+        if kind == "links":
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            for row_index, (text, url, value) in enumerate(payload):
+                if row_index:
+                    sep = Gtk.Box()
+                    sep.get_style_context().add_class("row-sep")
+                    sep.set_size_request(-1, 1)
+                    inner.pack_start(sep, False, False, 10)
+
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+
+                link = Gtk.Label(xalign=0.0)
+                link.set_markup(
+                    f'<a href="{GLib.markup_escape_text(url)}">'
+                    f'{GLib.markup_escape_text(text)}</a>')
+                link.set_track_visited_links(False)
+                link.connect("activate-link", self._on_link)
+                link.get_style_context().add_class("link-key")
+                link.set_valign(Gtk.Align.START)
+                link.set_size_request(140, -1)
+                row.pack_start(link, False, False, 0)
+
+                value_label = Gtk.Label(label=value[self.lang], xalign=0.0)
+                value_label.set_line_wrap(True)
+                value_label.set_max_width_chars(46)
+                value_label.get_style_context().add_class("body-text")
+                row.pack_start(value_label, True, True, 0)
+                inner.pack_start(row, False, False, 0)
+            return self.card(inner)
+
+        if kind == "grid":
+            # Iki sutunlu kart izgarasi (araclar sayfasi)
+            grid = Gtk.Grid()
+            grid.set_column_spacing(12)
+            grid.set_row_spacing(12)
+            grid.set_column_homogeneous(True)
+            grid.set_halign(Gtk.Align.CENTER)
+            grid.set_size_request(self.CARD_WIDTH, -1)
+            for i, (key, value) in enumerate(payload):
+                cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+                cell.get_style_context().add_class("tile")
+                cell.set_border_width(13)
+
+                name = Gtk.Label(label=key, xalign=0.0)
+                name.get_style_context().add_class("tile-title")
+                cell.pack_start(name, False, False, 0)
+
+                desc = Gtk.Label(label=value[self.lang], xalign=0.0)
+                desc.set_line_wrap(True)
+                desc.set_max_width_chars(32)
+                desc.set_valign(Gtk.Align.START)
+                desc.get_style_context().add_class("tile-text")
+                cell.pack_start(desc, True, True, 0)
+
+                grid.attach(cell, i % 2, i // 2, 1, 1)
+            return grid
+
+        return None
+
+    # -- durum yenileme ----------------------------------------------------
+
+    def refresh(self):
+        page = PAGES[self.index]
+        self.stack.set_visible_child_name(page["id"])
+
+        self.back_btn.set_label(UI["back"][self.lang])
+        self.back_btn.set_sensitive(self.index > 0)
+
+        last = self.index == len(PAGES) - 1
+        self.next_btn.set_label(
+            UI["finish"][self.lang] if last else UI["next"][self.lang])
+
+        self.check.set_label(UI["dont_show"][self.lang])
+        self.theme_btn.set_label(
+            UI["theme_light"][self.lang] if self.theme == "dark"
+            else UI["theme_dark"][self.lang])
+        self.set_title(UI["window_title"][self.lang])
+
+        self._sync_selection()
+        self._sync_wm_selection()
+
+        for i, dot in enumerate(self.dots.get_children()):
+            ctx = dot.get_style_context()
+            if i == self.index:
+                ctx.add_class("dot-active")
+            else:
+                ctx.remove_class("dot-active")
+
+    def rebuild(self):
+        """Dil degistiginde sayfalar yeniden olusturulur.
+
+        Yigin gecisi sirasinda kapatilir: sayfalar silinip yeniden
+        eklendiginde GTK bunu bir sayfa gecisi sanip kaydirma animasyonu
+        oynatiyor, oysa kullanici ayni sayfada duruyor.
+        """
+        previous = self.stack.get_transition_type()
+        self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
+
+        for child in self.stack.get_children():
+            self.stack.remove(child)
+        self.build_pages()
+        self.stack.show_all()
+        self.refresh()
+
+        # Gecis tipini, arayuz yerlestikten sonra geri al; hemen geri
+        # alinirsa animasyon yine tetikleniyor.
+        def restore():
+            self.stack.set_transition_type(previous)
+            return False
+        GLib.idle_add(restore)
+
+    # -- olaylar -----------------------------------------------------------
+
+    def on_next(self, _button):
+        if self.index < len(PAGES) - 1:
+            self.stack.set_transition_type(
+                Gtk.StackTransitionType.SLIDE_LEFT)
+            self.index += 1
+            self.refresh()
+        else:
+            self.apply_choices()
+            # Tanitim bir kez gosterilir; menuden her zaman yeniden acilabilir.
+            self.settings["show_on_startup"] = False
+            save_settings(self.settings)
+            self.close()
+
+    def apply_choices(self):
+        """Sihirbaz kapanirken secimleri sisteme uygular."""
+        apply_gtk_prefs(self.theme)
+        apply_sibling_settings(self.lang, self.theme)
+        apply_session_language(self.lang)
+        degisti = apply_icewm_theme(self.wm_theme)
+        degisti = apply_icewm_wallpaper(self.wallpaper) or degisti
+        if degisti:
+            reload_icewm()
+
+    def on_back(self, _button):
+        if self.index > 0:
+            self.stack.set_transition_type(
+                Gtk.StackTransitionType.SLIDE_RIGHT)
+            self.index -= 1
+            self.refresh()
+
+    def on_lang_changed(self, combo):
+        chosen = combo.get_active_id()
+        if not chosen or chosen == self.lang:
+            return
+        self.lang = chosen
+        self.settings["lang"] = chosen
+        save_settings(self.settings)
+
+        # Sisteme uygulama "Bitir" dugmesinde yapilir.
+        self.rebuild()
+
+    def on_theme_toggled(self, _button):
+        self.theme = "light" if self.theme == "dark" else "dark"
+        self.settings["theme"] = self.theme
+        save_settings(self.settings)
+
+        # Yalnizca sihirbazin gorunumu; sisteme uygulama "Bitir"de.
+        self.apply_theme()
+        self.refresh()
+
+    def on_check_toggled(self, check):
+        self.settings["show_on_startup"] = not check.get_active()
+        save_settings(self.settings)
+
+    def on_destroy(self, _widget):
+        save_settings(self.settings)
+        Gtk.main_quit()
+
+    # -- tema --------------------------------------------------------------
+
+    def apply_theme(self):
+        if self.theme == "dark":
+            bg = "#1f2325"; header = "#2b2f31"; fg = "#e6e6e6"
+            sub = "#9aa4a8"; field = "#2b2f31"
+            card = "#282d2f"; card_border = "#363c3e"
+            note_bg = "#2c3134"; row_sep = "#363c3e"
+            btn_bg = "#343a3c"; btn_hover = "#3f4649"; border = "#454b4e"
+            dot = "#4a5154"; code_fg = "#8fd6c4"; tile = "#2c3133"
+        else:
+            bg = "#f2f4f5"; header = "#e4e7e9"; fg = "#1f2325"
+            sub = "#5c666a"; field = "#ffffff"
+            card = "#ffffff"; card_border = "#dde2e4"
+            note_bg = "#eef1f2"; row_sep = "#e6eaeb"
+            btn_bg = "#ffffff"; btn_hover = "#eef0f1"; border = "#c3c8ca"
+            dot = "#c3c8ca"; code_fg = "#1f5f52"; tile = "#ffffff"
+
+        Gtk.Settings.get_default().set_property(
+            "gtk-application-prefer-dark-theme", self.theme == "dark")
+
+        css = f"""
+        window {{ background-color: {bg}; color: {fg}; }}
+        label {{ color: {fg}; }}
+
+        .header {{ background-color: {header}; }}
+        .wordmark {{ font-size: 132%; font-weight: bold; letter-spacing: 1px; }}
+        .version-tag {{ color: {sub}; font-size: 88%; }}
+
+        .page-title {{ font-size: 176%; font-weight: bold; }}
+        .title-rule {{ background-color: {self.ACCENT}; border-radius: 2px; }}
+        .page-subtitle {{ color: {sub}; font-size: 106%; }}
+        .body-text {{ font-size: 100%; }}
+
+        .card {{
+            background-color: {card};
+            border: 1px solid {card_border};
+            border-radius: 8px;
+        }}
+        .row-sep {{ background-color: {row_sep}; }}
+        .pair-key {{ font-weight: bold; color: {self.ACCENT}; }}
+        .link-key {{ font-weight: bold; }}
+        .link-key a {{ color: {self.ACCENT}; text-decoration: none; }}
+        .link-key a:hover {{ text-decoration: underline; }}
+        .bullet-marker {{ color: {self.ACCENT}; font-size: 100%; }}
+
+        .tile {{
+            background-color: {tile};
+            border: 1px solid {card_border};
+            border-radius: 8px;
+        }}
+        .tile-title {{ font-weight: bold; color: {self.ACCENT}; font-size: 103%; }}
+        .tile-text {{ color: {sub}; font-size: 92%; }}
+
+        .note-box {{
+            background-color: {note_bg};
+            border: 1px solid {card_border};
+            border-left: 3px solid {self.ACCENT};
+            border-radius: 8px;
+        }}
+        .note-mark {{
+            color: #ffffff;
+            background-color: {self.ACCENT};
+            font-weight: bold;
+            font-size: 88%;
+            border-radius: 999px;
+            min-width: 19px; min-height: 19px;
+        }}
+        .note-text {{ color: {sub}; font-size: 95%; }}
+
+        .code-box {{
+            background-color: {field};
+            border: 1px solid {border};
+            border-radius: 6px;
+        }}
+        .code-text {{ font-family: monospace; color: {code_fg}; }}
+
+        .shot-frame {{
+            border: 1px solid {card_border};
+            border-radius: 8px;
+            background-color: {card};
+        }}
+
+        .scope-note {{ color: {sub}; font-size: 84%; }}
+        .pick-card {{
+            background-color: {card}; border: 2px solid {card_border};
+            border-radius: 10px;
+        }}
+        .pick-card:hover {{ border-color: {sub}; }}
+        .pick-selected {{ border-color: {self.ACCENT}; }}
+        .pick-title {{ font-size: 108%; font-weight: bold; }}
+        .pick-sub {{ color: {sub}; font-size: 85%; }}
+        .section-title {{ font-size: 106%; font-weight: bold; }}
+        .wp-thumb {{ border-radius: 5px; }}
+
+        .preview-light {{
+            background-color: #f4f5f6; border: 1px solid #d4d9db;
+            border-radius: 6px;
+        }}
+        .preview-dark {{
+            background-color: #23282a; border: 1px solid #3a4042;
+            border-radius: 6px;
+        }}
+        .preview-bar-light {{ background-color: #e2e6e8; }}
+        .preview-bar-dark {{ background-color: #2e3436; }}
+        .preview-dot {{ background-color: {self.ACCENT}; border-radius: 999px; }}
+        .preview-line-light {{ background-color: #ccd2d4; border-radius: 3px; }}
+        .preview-line-dark {{ background-color: #3d4446; border-radius: 3px; }}
+        .preview-chip {{ background-color: {self.ACCENT}; border-radius: 4px; }}
+
+        .dot {{
+            min-width: 8px; min-height: 8px;
+            border-radius: 999px;
+            background-color: {dot};
+        }}
+        .dot-active {{ background-color: {self.ACCENT}; min-width: 22px; }}
+
+        button {{
+            background-image: none;
+            background-color: {btn_bg};
+            color: {fg};
+            border: 1px solid {border};
+            border-radius: 6px;
+            padding: 5px 18px;
+        }}
+        button label {{ color: {fg}; }}
+        button:hover {{ background-color: {btn_hover}; }}
+        button:disabled {{ color: {sub}; }}
+        button:disabled label {{ color: {sub}; }}
+
+        button.suggested-action {{
+            background-color: {self.ACCENT};
+            border-color: {self.ACCENT};
+            color: #ffffff;
+        }}
+        button.suggested-action label {{ color: #ffffff; }}
+
+        combobox button {{ background-color: {field}; color: {fg}; }}
+        combobox button label {{ color: {fg}; }}
+        menu, .menu, popover, popover.background {{
+            background-color: {field}; color: {fg};
+        }}
+        menuitem label, popover label {{ color: {fg}; }}
+        menuitem:hover {{ background-color: {self.ACCENT}; }}
+        menuitem:hover label {{ color: #ffffff; }}
+
+        checkbutton label {{ color: {sub}; font-size: 94%; }}
+        separator {{ background-color: {border}; }}
+        """
+        self.css_provider.load_from_data(css.encode())
+
+
+# ---------------------------------------------------------------------------
+
+def main():
+    settings = load_settings()
+
+    # Oturum acilisinda cagrildiysa ve kullanici kapatmissa sessizce cik
+    if "--autostart" in sys.argv and not settings["show_on_startup"]:
+        return 0
+
+    window = WelcomeWindow(settings)
+    window.show_all()
+    window.refresh()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

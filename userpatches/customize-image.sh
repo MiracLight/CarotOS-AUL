@@ -64,7 +64,14 @@ Main() {
 		overlay_kur
 	fi
 
-	# 3) Armbian'in tasidigi build ana makinesi sahipligini temizle
+	# 3) Turkce locale (Karsilama Sihirbazi Turkce secimi icin). Varsayilan dil
+	# en_US kalir; tr_TR yalnizca kullanici secerse ~/.xsessionrc ile devreye girer.
+	# Uretilemezse build basarisiz olur (sessizce calismayan bir secenek olmasin).
+	sed -i 's/^# *\(tr_TR\.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+	locale-gen
+	locale -a | grep -qi '^tr_TR\.utf-\?8$' || { echo "HATA: tr_TR.UTF-8 uretilemedi" >&2; exit 1; }
+
+	# 4) Armbian'in tasidigi build ana makinesi sahipligini temizle
 	sahiplik_temizle
 } # Main
 
